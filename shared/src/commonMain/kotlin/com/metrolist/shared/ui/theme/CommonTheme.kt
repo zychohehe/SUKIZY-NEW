@@ -37,7 +37,8 @@ import com.metrolist.shared.utils.artworkColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-val DefaultThemeColor = Color(0xFF6750A4)
+// Default dark-first accent (electric violet). Replaces the old purple/wallpaper-green look.
+val DefaultThemeColor = Color(0xFF7B61FF)
 
 // Official material-color-utilities Score fallback (Google Blue), used when the artwork has no usable colour.
 val ArtworkFallbackSeedColor = Color(0xFF4285F4)

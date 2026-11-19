@@ -20,6 +20,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.background
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridState
@@ -496,26 +501,54 @@ fun LibraryContent(
                             }
                         }
                     }
-                    items(
-                        count = searchedAutoPlaylists.size,
-                        key = { "auto_${searchedAutoPlaylists[it].type}" },
-                        contentType = { "auto_playlist" },
-                        span = { GridItemSpan(if (isGridView) 1 else maxLineSpan) },
-                    ) { index ->
-                        val playlist = searchedAutoPlaylists[index]
-                        Box(Modifier.animateItem()) {
-                            itemContainer(
-                                HiddenLibraryItem(
-                                    HiddenLibraryItemType.AUTO,
-                                    playlist.type,
-                                    playlist.title,
-                                    subtitle = playlist.subtitle,
-                                ),
-                                null,
-                                isGridView,
-                                { onAutoPlaylistClick(playlist.type) },
+                    // Akses cepat: Disukai/Diunduh/dll tampil sebagai baris kartu di atas; saat mencari kembali ke daftar biasa.
+                    val showQuickRow = searchQuery.isBlank() && !isSearchOpen && searchedAutoPlaylists.isNotEmpty()
+                    if (showQuickRow) {
+                        item(key = "library_quick_access", contentType = "quick_access", span = { GridItemSpan(maxLineSpan) }) {
+                            LazyRow(
+                                modifier = Modifier.fillMaxWidth().animateItem(),
+                                contentPadding = PaddingValues(horizontal = 0.dp, vertical = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
                             ) {
-                                AutoPlaylistItem(playlist, isGridView)
+                                items(searchedAutoPlaylists, key = { "quick_${it.type}" }) { playlist ->
+                                    itemContainer(
+                                        HiddenLibraryItem(
+                                            HiddenLibraryItemType.AUTO,
+                                            playlist.type,
+                                            playlist.title,
+                                            subtitle = playlist.subtitle,
+                                        ),
+                                        null,
+                                        true,
+                                        { onAutoPlaylistClick(playlist.type) },
+                                    ) {
+                                        AutoPlaylistQuickCard(playlist)
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        items(
+                            count = searchedAutoPlaylists.size,
+                            key = { "auto_${searchedAutoPlaylists[it].type}" },
+                            contentType = { "auto_playlist" },
+                            span = { GridItemSpan(if (isGridView) 1 else maxLineSpan) },
+                        ) { index ->
+                            val playlist = searchedAutoPlaylists[index]
+                            Box(Modifier.animateItem()) {
+                                itemContainer(
+                                    HiddenLibraryItem(
+                                        HiddenLibraryItemType.AUTO,
+                                        playlist.type,
+                                        playlist.title,
+                                        subtitle = playlist.subtitle,
+                                    ),
+                                    null,
+                                    isGridView,
+                                    { onAutoPlaylistClick(playlist.type) },
+                                ) {
+                                    AutoPlaylistItem(playlist, isGridView)
+                                }
                             }
                         }
                     }
@@ -905,6 +938,53 @@ private fun AutoPlaylistItem(
                 icon = playlist.icon,
             )
             playlist.badge?.let { AutoPlaylistBadge(it, Modifier.align(Alignment.CenterEnd).padding(end = 8.dp)) }
+        }
+    }
+}
+
+@Composable
+private fun AutoPlaylistQuickCard(playlist: LibraryAutoPlaylist) {
+    val shape = RoundedCornerShape(20.dp)
+    Row(
+        modifier =
+            Modifier
+                .width(168.dp)
+                .clip(shape)
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.75f))
+                .padding(horizontal = 12.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = playlist.icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier.size(22.dp),
+            )
+        }
+        Column(Modifier.weight(1f)) {
+            Text(
+                playlist.title,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                playlist.badge ?: playlist.subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }

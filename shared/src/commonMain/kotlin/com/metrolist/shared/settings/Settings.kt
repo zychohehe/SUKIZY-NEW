@@ -313,13 +313,19 @@ class Settings(
     var knownUploadIdsJson by preference(KnownUploadIdsJsonKey, "")
     var hasNewUploads by preference(HasNewUploadsKey, false)
 
-    var materialYouEnabled by preference(true)
+    // Login streak (daily app-open streak, TikTok-style).
+    var streakLastDay by preference(-1L)
+    var streakCount by preference(0)
+    var streakBest by preference(0)
+    var streakRecentDays by preference("")
+
+    var materialYouEnabled by preference(false)
     var uiEnhancements by preference(true)
     var dynamicTheme by preference(true)
-    var themeMode by preference(ThemeMode.AUTO)
+    var themeMode by preference(ThemeMode.DARK)
     var autoPureBlack by preference(AutoPureBlackKey, false)
     var selectedThemeColor by preference(0L)
-    var themePaletteStyle by preference(ThemePaletteStyle.VIBRANT)
+    var themePaletteStyle by preference(ThemePaletteStyle.TONAL_SPOT)
     var matugenTheme by preference(MatugenThemeKey, false)
 
     var appFont by preference(FontOption.SYSTEM)
@@ -459,8 +465,8 @@ class Settings(
 
     var globalLyricsOffsetMs by preference(GlobalLyricsOffsetMsKey, 0)
     var lyricsAnimationStyle by preference("Apple")
-    var lyricsTextSize by preference(36f)
-    var lyricsLineSpacing by preference(1.3f)
+    var lyricsTextSize by preference(30f)
+    var lyricsLineSpacing by preference(1.4f)
     var lyricsPlusLighter by preference(LyricsPlusLighterKey, true)
     var lyricsNeutralColor by preference(LyricsNeutralColorKey, false)
     var subtitleTextSize by preference(16f)
@@ -469,7 +475,7 @@ class Settings(
     var lyricsActiveByRealTiming by preference(LyricsActiveByRealTimingKey, false)
     var lyricsProgressiveBlur by preference(LyricsProgressiveBlurKey, false)
 
-    var lyricsTextPosition by preference("CENTER")
+    var lyricsTextPosition by preference("LEFT")
     var activeLyricsTextPosition by preference(ActiveLyricsTextPositionKey, "CENTER")
     var lyricsShareImageStyle by preference(LyricsShareImageStyleKey, "")
     var lyricsAutoScroll by preference(true)
@@ -548,7 +554,7 @@ class Settings(
         "Japanese:true,Korean:true,Chinese:true,Arabic:true,Hindi:true,Punjabi:true,Thai:true,Russian:true,Ukrainian:true,Serbian:true,Bulgarian:true,Belarusian:true,Kyrgyz:true,Macedonian:true",
     )
 
-    var respectAgentPositioning by preference(true)
+    var respectAgentPositioning by preference(false)
 
     var lyricsHideStatusBarInFullscreen by preference(false)
 

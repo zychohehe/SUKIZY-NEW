@@ -99,7 +99,7 @@ class AndroidBatchSettingsTest {
             val context = RuntimeEnvironment.getApplication()
             val settings = Settings(AndroidFileSettings(context, AndroidBatchSettings(store)))
             assertEquals(PlayerBackgroundStyle.BLURRED_ARTWORK, settings.playerBackgroundStyle)
-            assertEquals(ThemeMode.AUTO, settings.themeMode)
+            assertEquals(ThemeMode.DARK, settings.themeMode)
             settings.flush()
 
             val persisted = runBlocking { store.data.first() }
@@ -107,7 +107,7 @@ class AndroidBatchSettingsTest {
             assertFalse(persisted.contains(stringPreferencesKey("themeMode")))
             val reopened = Settings(AndroidFileSettings(context, AndroidBatchSettings(store)))
             assertEquals(PlayerBackgroundStyle.BLURRED_ARTWORK, reopened.playerBackgroundStyle)
-            assertEquals(ThemeMode.AUTO, reopened.themeMode)
+            assertEquals(ThemeMode.DARK, reopened.themeMode)
         } finally {
             scope.cancel()
         }

@@ -106,6 +106,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
@@ -182,6 +183,9 @@ import com.metrolist.android.playback.resolveIncomingPlaybackSong
 import com.metrolist.android.playback.voiceSearchRequest
 import com.metrolist.android.ui.component.BottomSheetMenu
 import com.metrolist.android.ui.component.FloatingTopAppBar
+import com.metrolist.android.ui.component.StreakChip
+import com.metrolist.android.ui.component.StreakSheet
+import com.metrolist.android.ui.component.rememberStreakState
 import com.metrolist.android.ui.component.LocalMenuState
 import com.metrolist.android.ui.component.MenuState
 import com.metrolist.android.ui.component.TabTopBarHeight
@@ -1460,22 +1464,49 @@ fun MetrolistApp(
                             ) {
                                 // Satu backdrop gradien di belakang status bar, top bar, dan konten supaya semuanya menyatu.
                                 val backdropSurface = MaterialTheme.colorScheme.surface
-                                val backdropPrimary = MaterialTheme.colorScheme.primary
                                 val backdropTertiary = MaterialTheme.colorScheme.tertiary
+                                // Warna backdrop mengikuti cover lagu yang sedang diputar, berpindah halus antar lagu.
+                                val coverContext = LocalContext.current
+                                val coverUrl = currentSong?.thumbnail
+                                var coverTint by remember(coverUrl) { mutableStateOf(Color.Unspecified) }
+                                LaunchedEffect(coverUrl) {
+                                    coverTint =
+                                        if (coverUrl == null || pureBlack) {
+                                            Color.Unspecified
+                                        } else {
+                                            try {
+                                                PlayerColorExtractor
+                                                    .extractColors(coverContext, coverContext.imageLoader, coverUrl, Color.Black)
+                                                    ?.dominant ?: Color.Unspecified
+                                            } catch (error: CancellationException) {
+                                                throw error
+                                            } catch (_: Exception) {
+                                                Color.Unspecified
+                                            }
+                                        }
+                                }
+                                val backdropPrimary by animateColorAsState(
+                                    targetValue = if (coverTint.isSpecified) coverTint else MaterialTheme.colorScheme.primary,
+                                    animationSpec = tween(durationMillis = 900),
+                                    label = "appBackdropTint",
+                                )
                                 val unifiedBackdrop =
                                     if (pureBlack) {
                                         Modifier
                                     } else {
-                                        Modifier.background(
-                                            Brush.verticalGradient(
-                                                colors =
-                                                    listOf(
-                                                        backdropPrimary.copy(alpha = 0.22f).compositeOver(backdropSurface),
-                                                        backdropTertiary.copy(alpha = 0.10f).compositeOver(backdropSurface),
-                                                        backdropSurface,
-                                                    ),
-                                            ),
-                                        )
+                                        // Dibaca di fase draw agar animasi warna tidak memicu recomposition seluruh layar.
+                                        Modifier.drawBehind {
+                                            drawRect(
+                                                Brush.verticalGradient(
+                                                    colors =
+                                                        listOf(
+                                                            backdropPrimary.copy(alpha = 0.22f).compositeOver(backdropSurface),
+                                                            backdropTertiary.copy(alpha = 0.10f).compositeOver(backdropSurface),
+                                                            backdropSurface,
+                                                        ),
+                                                ),
+                                            )
+                                        }
                                     }
                                 Column(
                                     // Measure the full content slot before the import card and top inset reduce the scaffold.
@@ -1541,6 +1572,19 @@ fun MetrolistApp(
                                                         emptyList()
                                                     }
                                                 val topBarActions: @Composable RowScope.() -> Unit = {
+                                                    // Streak login harian: tercatat otomatis, update real-time saat hari berganti.
+                                                    val streakState = rememberStreakState()
+                                                    var showStreakSheet by remember { mutableStateOf(false) }
+                                                    if (navigationState.topLevelRoute == Screen.Home) {
+                                                        StreakChip(
+                                                            state = streakState,
+                                                            modifier = Modifier.padding(end = 4.dp),
+                                                            onClick = { showStreakSheet = true },
+                                                        )
+                                                    }
+                                                    if (showStreakSheet) {
+                                                        StreakSheet(state = streakState, onDismiss = { showStreakSheet = false })
+                                                    }
                                                     if (navigationState.topLevelRoute == Screen.Home && Screen.History !in railScreens) {
                                                         TopBarIconButton(
                                                             floating = useFloatingTopBar,

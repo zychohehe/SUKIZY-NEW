@@ -157,7 +157,7 @@ private const val LYRICS_ANCHOR_RATIO = 0.5f
 private const val MAX_PRE_CENTER_STAGGER_LINES = 4
 private const val LYRICS_TEXT_MEASURER_CACHE_SIZE = 384
 private const val PENDING_SEEK_TIMEOUT_MS = 650L
-private val LYRICS_ITEM_GAP_DP = 16.dp
+private val LYRICS_ITEM_GAP_DP = 20.dp
 private val LYRICS_FADE_TOP_DP = 130.dp
 private val LYRICS_FADE_BOTTOM_DP = 160.dp
 private val LYRICS_KEEP_ALIVE_ZONE_BASE_DP = 350.dp
@@ -1488,7 +1488,7 @@ fun LyricsView(
                                                     }
 
                                                 Box(
-                                                    modifier = Modifier.fillMaxWidth().padding(bottom = LYRICS_ITEM_GAP_DP),
+                                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp).padding(bottom = LYRICS_ITEM_GAP_DP),
                                                     contentAlignment = Alignment.Center,
                                                 ) {
                                                     CompositionLocalProvider(LocalLyricsAnimationVisible provides isVisible) {
