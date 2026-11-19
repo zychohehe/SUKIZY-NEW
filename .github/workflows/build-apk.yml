@@ -97,6 +97,11 @@ jobs:
             exit 1
           fi
           ls -lh build-apks
+          # archive: false uploads exactly one file.
+          if [ "$count" -ne 1 ]; then
+            echo "Expected exactly 1 APK, found $count" >&2
+            exit 1
+          fi
 
       - name: Verify APK archives
         shell: bash
@@ -108,14 +113,15 @@ jobs:
             sha256sum "$apk"
           done
 
-      - name: Upload APKs
-        uses: actions/upload-artifact@v4
+      # Upload the raw APK with no artifact zip around it. The zip layer is what produced
+      # "Bad file CRC value" in Android file managers; a bare .apk cannot hit that.
+      - name: Upload APK
+        uses: actions/upload-artifact@v7
         with:
-          name: fahfile-debug-apk
+          name: SUKIZY-debug-apk
           path: build-apks/*.apk
+          archive: false
           retention-days: 30
-          # APKs are already compressed; storing them avoids a second compression layer in the artifact zip.
-          compression-level: 0
           if-no-files-found: error
 
       # Diagnostics contain no secrets: this workflow reads none, and only build reports are uploaded.
