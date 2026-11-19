@@ -114,6 +114,8 @@ jobs:
           name: fahfile-debug-apk
           path: build-apks/*.apk
           retention-days: 30
+          # APKs are already compressed; storing them avoids a second compression layer in the artifact zip.
+          compression-level: 0
           if-no-files-found: error
 
       # Diagnostics contain no secrets: this workflow reads none, and only build reports are uploaded.
