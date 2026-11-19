@@ -31,7 +31,13 @@ jobs:
 
       # gradle.properties berisi path Windows (C:/Program Files/...) yang bikin build Linux gagal.
       - name: Hapus org.gradle.java.home milik Windows
-        run: sed -i '/^org.gradle.java.home=/d' gradle.properties
+        run: |
+          sed -i '/^org.gradle.java.home=/d' gradle.properties
+          # Paksa daemon Gradle memakai JDK 21 (runner ubuntu-latest punya JDK 25 yang membuat
+          # Groovy di Gradle 8.11 gagal: "Unsupported class file major version 69").
+          echo "org.gradle.java.home=${JAVA_HOME}" >> gradle.properties
+          echo "org.gradle.java.installations.auto-download=false" >> gradle.properties
+          echo "JAVA_HOME=${JAVA_HOME}"; "${JAVA_HOME}/bin/java" -version
 
       - name: Install NDK dan CMake
         run: |
