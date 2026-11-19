@@ -153,9 +153,6 @@ sealed class Screen : NavKey {
     data object BackupRestore : Screen()
 
     @Serializable
-    data object PlaylistImport : Screen()
-
-    @Serializable
     data object Updates : Screen()
 
     @Serializable

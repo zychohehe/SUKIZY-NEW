@@ -9,6 +9,7 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -24,15 +25,20 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -47,17 +53,24 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -205,7 +218,19 @@ private fun DrawScope.drawFlamePath(
     drawPath(path, brush)
 }
 
-/** Chip kecil di top bar: api bergerak + jumlah hari. Ketuk untuk membuka detail streak. */
+private val Ember = Color(0xFFFF8A00)
+private val Milestones = listOf(3, 7, 14, 30, 60, 100, 200, 365)
+private val DayLabels = listOf("Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min")
+
+/** Warna angka streak: terang di tema gelap, lebih pekat di tema terang agar tetap terbaca. */
+@Composable
+private fun emberTextColor(lit: Boolean): Color {
+    if (!lit) return MaterialTheme.colorScheme.onSurfaceVariant
+    val dark = MaterialTheme.colorScheme.surface.luminance() < 0.5f
+    return if (dark) Color(0xFFFFB74D) else Color(0xFFC43E00)
+}
+
+/** Chip ringkas di top bar: api bergerak + jumlah hari. Ketuk untuk membuka detail streak. */
 @Composable
 fun StreakChip(
     state: StreakState,
@@ -214,15 +239,15 @@ fun StreakChip(
 ) {
     val lit = state.count > 0
     val shape = RoundedCornerShape(50)
+    val label = "Streak ${state.count} hari"
     Row(
         modifier =
             modifier
+                .semantics { contentDescription = label }
                 .clip(shape)
                 .background(
                     if (lit) {
-                        Brush.horizontalGradient(
-                            listOf(Color(0x33FF6D00), Color(0x1AFFB300)),
-                        )
+                        Brush.horizontalGradient(listOf(Ember.copy(alpha = 0.26f), Ember.copy(alpha = 0.10f)))
                     } else {
                         Brush.horizontalGradient(
                             listOf(
@@ -231,8 +256,11 @@ fun StreakChip(
                             ),
                         )
                     },
-                ).border(1.dp, if (lit) Color(0x55FF8F00) else MaterialTheme.colorScheme.outlineVariant, shape)
-                .clickable(onClick = onClick)
+                ).border(
+                    1.dp,
+                    if (lit) Ember.copy(alpha = 0.45f) else MaterialTheme.colorScheme.outlineVariant,
+                    shape,
+                ).clickable(onClick = onClick)
                 .padding(start = 4.dp, end = 12.dp, top = 2.dp, bottom = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -246,17 +274,15 @@ fun StreakChip(
         ) { count ->
             Text(
                 text = count.toString(),
-                style = MaterialTheme.typography.titleSmall,
+                style = MaterialTheme.typography.titleSmall.copy(fontFeatureSettings = "tnum"),
                 fontWeight = FontWeight.ExtraBold,
-                color = if (lit) Color(0xFFFFB74D) else MaterialTheme.colorScheme.onSurfaceVariant,
+                color = emberTextColor(lit),
             )
         }
     }
 }
 
-private val DayLabels = listOf("Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min")
-
-/** Lembar detail streak: api besar, hitung mundur real-time, dan progres satu minggu. */
+/** Lembar detail streak: hero api, rantai mingguan, progres target, rekor, dan hitung mundur real-time. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StreakSheet(
@@ -277,109 +303,312 @@ fun StreakSheet(
         containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 24.dp).padding(bottom = 24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .navigationBarsPadding()
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            AnimatedStreakFlame(size = 132.dp, lit = state.count > 0)
-            Text(
-                text = state.count.toString(),
-                style = MaterialTheme.typography.displayMedium,
-                fontWeight = FontWeight.ExtraBold,
-                color = if (state.count > 0) Color(0xFFFFB74D) else MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                text = if (state.count == 1) "hari streak" else "hari berturut-turut",
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Spacer(Modifier.height(6.dp))
-            Text(
-                text =
-                    if (state.checkedInToday) {
-                        "Hari ini sudah tercatat. Buka lagi besok untuk lanjut."
-                    } else {
-                        "Buka aplikasi hari ini untuk menjaga api tetap menyala."
-                    },
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
-            Spacer(Modifier.height(20.dp))
-            WeekRow(state.week)
-            Spacer(Modifier.height(20.dp))
+            StreakHero(state)
+            WeekCard(state)
+            MilestoneCard(state.count)
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(IntrinsicSize.Min)
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh),
             ) {
-                StatTile("Hari baru dalam", formatCountdown(secondsLeft), Modifier.weight(1f))
-                StatTile("Rekor terbaik", "${state.best} hari", Modifier.weight(1f))
+                StatCell("Rekor terbaik", "${state.best} hari", Modifier.weight(1f))
+                Box(
+                    Modifier
+                        .width(1.dp)
+                        .fillMaxHeight()
+                        .padding(vertical = 14.dp)
+                        .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
+                )
+                StatCell("Hari baru dalam", formatCountdown(secondsLeft), Modifier.weight(1f))
             }
         }
     }
 }
 
 @Composable
-private fun StatTile(
+private fun StreakHero(state: StreakState) {
+    val lit = state.count > 0
+    Box(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(32.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .drawBehind {
+                    if (lit) {
+                        drawRect(
+                            Brush.radialGradient(
+                                colors = listOf(Ember.copy(alpha = 0.30f), Color.Transparent),
+                                center = Offset(size.width / 2f, size.height * 0.26f),
+                                radius = size.width * 0.8f,
+                            ),
+                        )
+                    }
+                }.padding(horizontal = 20.dp, vertical = 22.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            AnimatedStreakFlame(size = 112.dp, lit = lit)
+            Text(
+                text = state.count.toString(),
+                style = MaterialTheme.typography.displayLarge.copy(fontFeatureSettings = "tnum"),
+                fontWeight = FontWeight.ExtraBold,
+                color = emberTextColor(lit),
+            )
+            Text(
+                text = if (lit) "hari beruntun" else "Belum ada streak",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Spacer(Modifier.height(16.dp))
+            StatusPill(state.checkedInToday)
+        }
+    }
+}
+
+@Composable
+private fun StatusPill(checkedIn: Boolean) {
+    Row(
+        modifier =
+            Modifier
+                .clip(RoundedCornerShape(50))
+                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+                .padding(horizontal = 14.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        if (checkedIn) {
+            Box(
+                Modifier.size(18.dp).clip(CircleShape).background(Ember),
+                contentAlignment = Alignment.Center,
+            ) {
+                CheckMark(Modifier.size(11.dp), Color.White)
+            }
+        } else {
+            Box(Modifier.size(8.dp).clip(CircleShape).background(Ember))
+        }
+        Text(
+            text =
+                if (checkedIn) {
+                    "Hari ini sudah tercatat. Buka lagi besok."
+                } else {
+                    "Buka aplikasi hari ini untuk menjaga api."
+                },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+@Composable
+private fun WeekCard(state: StreakState) {
+    val activeCount = state.week.count { it.active }
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(24.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .padding(horizontal = 8.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "Minggu ini",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                "$activeCount dari 7 hari",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Row(Modifier.fillMaxWidth()) {
+            state.week.forEachIndexed { index, day ->
+                DayCell(
+                    day = day,
+                    prevActive = state.week.getOrNull(index - 1)?.active == true,
+                    nextActive = state.week.getOrNull(index + 1)?.active == true,
+                    future = day.epochDay > state.todayEpochDay,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+    }
+}
+
+/** Satu hari: label + lingkaran, dengan pita penghubung ke hari aktif di sebelahnya (efek rantai). */
+@Composable
+private fun DayCell(
+    day: StreakDay,
+    prevActive: Boolean,
+    nextActive: Boolean,
+    future: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val primary = MaterialTheme.colorScheme.primary
+    val outline = MaterialTheme.colorScheme.outlineVariant
+    val filled = MaterialTheme.colorScheme.surfaceContainerHighest
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            DayLabels[day.dayOfWeekIndex],
+            style = MaterialTheme.typography.labelSmall,
+            color = if (day.isToday) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+            fontWeight = if (day.isToday) FontWeight.Bold else FontWeight.Normal,
+        )
+        Spacer(Modifier.height(8.dp))
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(36.dp)
+                    .drawBehind {
+                        if (day.active) {
+                            val bar = 6.dp.toPx()
+                            val top = (size.height - bar) / 2f
+                            if (prevActive) drawRect(Ember, Offset(0f, top), Size(size.width / 2f, bar))
+                            if (nextActive) drawRect(Ember, Offset(size.width / 2f, top), Size(size.width / 2f, bar))
+                        }
+                    },
+            contentAlignment = Alignment.Center,
+        ) {
+            Box(
+                modifier =
+                    Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (day.active) {
+                                Brush.verticalGradient(listOf(FlameOuterTop, FlameOuterBottom))
+                            } else {
+                                Brush.verticalGradient(
+                                    listOf(if (future) Color.Transparent else filled, if (future) Color.Transparent else filled),
+                                )
+                            },
+                        ).then(
+                            when {
+                                day.isToday -> Modifier.border(2.dp, primary, CircleShape)
+                                future -> Modifier.border(1.5.dp, outline.copy(alpha = 0.7f), CircleShape)
+                                else -> Modifier
+                            },
+                        ),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (day.active) CheckMark(Modifier.size(16.dp), Color.White)
+            }
+        }
+    }
+}
+
+@Composable
+private fun CheckMark(
+    modifier: Modifier,
+    color: Color,
+) {
+    Canvas(modifier) {
+        val path =
+            Path().apply {
+                moveTo(size.width * 0.18f, size.height * 0.54f)
+                lineTo(size.width * 0.42f, size.height * 0.76f)
+                lineTo(size.width * 0.84f, size.height * 0.28f)
+            }
+        drawPath(
+            path,
+            color,
+            style = Stroke(width = size.width * 0.16f, cap = StrokeCap.Round, join = StrokeJoin.Round),
+        )
+    }
+}
+
+@Composable
+private fun MilestoneCard(count: Int) {
+    val previous = Milestones.lastOrNull { it <= count } ?: 0
+    val next = Milestones.firstOrNull { it > count } ?: ((count / 100) + 1) * 100
+    val target = ((count - previous).toFloat() / (next - previous).toFloat()).coerceIn(0f, 1f)
+    val progress by animateFloatAsState(target, tween(700), label = "milestoneProgress")
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(24.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "Target berikutnya",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                "$next hari",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = emberTextColor(true),
+            )
+        }
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(10.dp)
+                .clip(RoundedCornerShape(50))
+                .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+        ) {
+            Box(
+                Modifier
+                    .fillMaxWidth(progress)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(50))
+                    .background(Brush.horizontalGradient(listOf(FlameOuterTop, FlameOuterBottom))),
+            )
+        }
+        Text(
+            text = "Tinggal ${next - count} hari lagi",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun StatCell(
     label: String,
     value: String,
     modifier: Modifier = Modifier,
 ) {
-    Column(
-        modifier =
-            modifier
-                .clip(RoundedCornerShape(20.dp))
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                .padding(horizontal = 16.dp, vertical = 14.dp),
-    ) {
+    Column(modifier.padding(horizontal = 16.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(4.dp))
-        Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-    }
-}
-
-@Composable
-private fun WeekRow(week: List<StreakDay>) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        week.forEach { day ->
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    DayLabels[day.dayOfWeekIndex],
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (day.isToday) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontWeight = if (day.isToday) FontWeight.Bold else FontWeight.Normal,
-                )
-                Spacer(Modifier.height(6.dp))
-                Box(
-                    modifier =
-                        Modifier
-                            .size(38.dp)
-                            .clip(CircleShape)
-                            .background(
-                                if (day.active) {
-                                    Brush.verticalGradient(listOf(FlameOuterTop, FlameOuterBottom))
-                                } else {
-                                    Brush.verticalGradient(
-                                        listOf(
-                                            MaterialTheme.colorScheme.surfaceContainerHigh,
-                                            MaterialTheme.colorScheme.surfaceContainerHigh,
-                                        ),
-                                    )
-                                },
-                            ).then(
-                                if (day.isToday) {
-                                    Modifier.border(2.dp, MaterialTheme.colorScheme.primary, CircleShape)
-                                } else {
-                                    Modifier
-                                },
-                            ),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    if (day.active) {
-                        Text("✓", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
-                    }
-                }
-            }
-        }
+        Text(
+            value,
+            style = MaterialTheme.typography.titleLarge.copy(fontFeatureSettings = "tnum"),
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
     }
 }
 

@@ -1914,11 +1914,12 @@ fun BackupRestoreScreen(onNavigateBack: () -> Unit) {
             )
         }
 
-        SettingsSubScreenGroup(
-            title = stringResource(Res.string.backup_restore_title),
-            items =
-                listOf(
-                    SettingsSubScreenItem(
+        SettingsSubScreenGroup(title = stringResource(Res.string.backup_restore_title)) {
+            BackupActionList(
+                actions =
+                    listOf(
+                    BackupAction(
+                        glyph = "↑",
                         title = stringResource(Res.string.action_backup),
                         description =
                             if (isBusy) {
@@ -1931,7 +1932,8 @@ fun BackupRestoreScreen(onNavigateBack: () -> Unit) {
                         enabled = controlsEnabled,
                         onClick = { showBackupWarning = true },
                     ),
-                    SettingsSubScreenItem(
+                    BackupAction(
+                        glyph = "↓",
                         title = stringResource(Res.string.action_restore),
                         description =
                             if (isBusy) {
@@ -1950,7 +1952,8 @@ fun BackupRestoreScreen(onNavigateBack: () -> Unit) {
                             }
                         },
                     ),
-                    SettingsSubScreenItem(
+                    BackupAction(
+                        glyph = "⇄",
                         title = stringResource(Res.string.foreign_import_title),
                         description =
                             if (isBusy) {
@@ -1967,8 +1970,9 @@ fun BackupRestoreScreen(onNavigateBack: () -> Unit) {
                             }
                         },
                     ),
-                ),
-        )
+                    ),
+            )
+        }
     }
 }
 

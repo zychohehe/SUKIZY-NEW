@@ -235,7 +235,6 @@ import com.metrolist.android.ui.screens.settings.ListenTogetherScreen
 import com.metrolist.android.ui.screens.settings.ListenTogetherServerScreen
 import com.metrolist.android.ui.screens.settings.ListenTogetherSettingsScreen
 import com.metrolist.android.ui.screens.settings.PlaybackBenchmarkSettingsScreen
-import com.metrolist.android.ui.screens.settings.PlaylistImportScreen
 import com.metrolist.android.ui.screens.settings.ReleaseNotesSheet
 import com.metrolist.android.ui.screens.settings.StatsDetailScreen
 import com.metrolist.android.ui.screens.settings.StatsScreen
@@ -1157,7 +1156,7 @@ fun MetrolistApp(
                     val hostView = LocalView.current
                     val keepScreenOn =
                         (isPlayerExpanded && Settings.shared.keepScreenOnMode.keepsAwake(isPlaying, lyricsVisible)) ||
-                            (currentRoute in setOf(Screen.PlaylistImport, Screen.BackupRestore) && activeImport?.isRunning == true)
+                            (currentRoute == Screen.BackupRestore && activeImport?.isRunning == true)
                     DisposableEffect(hostView, keepScreenOn) {
                         hostView.keepScreenOn = keepScreenOn
                         onDispose { hostView.keepScreenOn = false }
@@ -1314,7 +1313,7 @@ fun MetrolistApp(
                             }
 
                             is IncomingDestination.PlaylistImport -> {
-                                navigator.navigate(Screen.PlaylistImport)
+                                navigator.navigate(Screen.BackupRestore)
                                 destination.resultMessage?.let { message ->
                                     coroutineScope.launch { snackbarHostState.showSnackbar(message) }
                                 }
@@ -2600,7 +2599,7 @@ fun getEntryProvider(
                 onNavigateToArtist = { artistId -> navigator.navigate(Screen.Artist(artistId)) },
                 onNavigateToPlaylist = { id, thumbnail -> navigator.navigate(Screen.Playlist(id, thumbnailHint = thumbnail)) },
                 onNavigateToPodcast = { podcastId -> navigator.navigate(Screen.Podcast(podcastId)) },
-                onNavigateToPlaylistImport = { navigator.navigate(Screen.PlaylistImport) },
+                onNavigateToPlaylistImport = { navigator.navigate(Screen.BackupRestore) },
                 onNavigateToAutoPlaylist = { type ->
                     // Keep podcast auto playlists on the Library stack so Back returns to the podcast library.
                     navigator.navigate(Screen.Library)
@@ -2839,10 +2838,6 @@ fun getEntryProvider(
 
         entry<Screen.BackupRestore>(metadata = navTabMetadata) {
             BackupRestoreScreen(onNavigateBack = { navigator.goBack() })
-        }
-
-        entry<Screen.PlaylistImport>(metadata = navTabMetadata) {
-            PlaylistImportScreen(onNavigateBack = { navigator.goBack() })
         }
 
         entry<Screen.AndroidAuto>(metadata = navTabMetadata) {
