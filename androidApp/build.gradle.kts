@@ -252,10 +252,10 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.sukizy"
+        applicationId = "com.sukizy.app"
         minSdk = 24
         targetSdk = 37
-        versionCode = 161
+        versionCode = 8
         versionName = appVersion
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

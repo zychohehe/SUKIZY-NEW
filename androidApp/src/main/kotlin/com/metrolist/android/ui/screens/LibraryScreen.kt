@@ -103,7 +103,6 @@ import com.metrolist.shared.generated.resources.delete
 import com.metrolist.shared.generated.resources.delete_playlist_question
 import com.metrolist.shared.generated.resources.error_occurred
 import com.metrolist.shared.generated.resources.hide_from_library
-import com.metrolist.shared.generated.resources.import_from_spotify
 import com.metrolist.shared.generated.resources.import_playlist
 import com.metrolist.shared.generated.resources.more_options
 import com.metrolist.shared.generated.resources.new_playlist
@@ -801,30 +800,20 @@ fun LibraryScreen(
             ) {
                 DropdownMenuGroup(shapes = MenuDefaults.groupShape(0, 1)) {
                     DropdownMenuItem(
-                        modifier = Modifier.tvFocusHighlight(groupedMenuItemShapes(0, 3).shape).navigationPopupSource(),
+                        modifier = Modifier.tvFocusHighlight(groupedMenuItemShapes(0, 2).shape).navigationPopupSource(),
                         text = { Text(stringResource(Res.string.create_playlist)) },
-                        shape = groupedMenuItemShapes(0, 3).shape,
+                        shape = groupedMenuItemShapes(0, 2).shape,
                         onClick = {
                             showNewPlaylistMenu = false
                             showCreateDialog = true
                         },
                     )
                     DropdownMenuItem(
-                        modifier = Modifier.tvFocusHighlight(groupedMenuItemShapes(1, 3).shape),
+                        modifier = Modifier.tvFocusHighlight(groupedMenuItemShapes(1, 2).shape),
                         text = { Text(stringResource(Res.string.import_playlist)) },
-                        shape = groupedMenuItemShapes(1, 3).shape,
+                        shape = groupedMenuItemShapes(1, 2).shape,
                         onClick = {
                             showNewPlaylistMenu = false
-                            onNavigateToPlaylistImport()
-                        },
-                    )
-                    DropdownMenuItem(
-                        modifier = Modifier.tvFocusHighlight(groupedMenuItemShapes(2, 3).shape),
-                        text = { Text(stringResource(Res.string.import_from_spotify)) },
-                        shape = groupedMenuItemShapes(2, 3).shape,
-                        onClick = {
-                            showNewPlaylistMenu = false
-                            SpotifyImportLaunchRequest.request()
                             onNavigateToPlaylistImport()
                         },
                     )

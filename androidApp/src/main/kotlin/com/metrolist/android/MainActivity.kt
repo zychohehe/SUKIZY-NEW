@@ -194,6 +194,13 @@ class MainActivity : ComponentActivity() {
         setIntent(pendingIntent ?: Intent(this, MainActivity::class.java))
         isInPipModeState.value = isInPictureInPictureMode
         WindowCompat.enableEdgeToEdge(window)
+        // Bar sistem transparan penuh agar status bar & navigation bar menyatu dengan background aplikasi.
+        window.statusBarColor = android.graphics.Color.TRANSPARENT
+        window.navigationBarColor = android.graphics.Color.TRANSPARENT
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+            window.isStatusBarContrastEnforced = false
+        }
         val lightSystemBars = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK != Configuration.UI_MODE_NIGHT_YES
         WindowCompat.getInsetsController(window, window.decorView).apply {
             isAppearanceLightStatusBars = lightSystemBars

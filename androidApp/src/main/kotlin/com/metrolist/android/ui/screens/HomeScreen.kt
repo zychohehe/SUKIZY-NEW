@@ -402,7 +402,7 @@ fun HomeScreen(
                 ) {
                     SmallFloatingActionButton(
                         onClick = onNavigateToRecognition,
-                        shape = RoundedCornerShape(8.dp),
+                        shape = RoundedCornerShape(16.dp),
                         containerColor = MaterialTheme.colorScheme.primaryContainer,
                         contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                     ) {
@@ -413,7 +413,9 @@ fun HomeScreen(
                     }
                     FloatingActionButton(
                         onClick = ::shuffleHomeContent,
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(20.dp),
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                     ) {
                         Icon(
                             imageVector = MetrolistIcons.Rounded.Shuffle,

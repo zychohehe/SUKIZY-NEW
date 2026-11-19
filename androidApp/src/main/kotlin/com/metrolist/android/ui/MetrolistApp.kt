@@ -105,6 +105,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
@@ -1457,10 +1458,30 @@ fun MetrolistApp(
                                             },
                                         ),
                             ) {
+                                // Satu backdrop gradien di belakang status bar, top bar, dan konten supaya semuanya menyatu.
+                                val backdropSurface = MaterialTheme.colorScheme.surface
+                                val backdropPrimary = MaterialTheme.colorScheme.primary
+                                val backdropTertiary = MaterialTheme.colorScheme.tertiary
+                                val unifiedBackdrop =
+                                    if (pureBlack) {
+                                        Modifier
+                                    } else {
+                                        Modifier.background(
+                                            Brush.verticalGradient(
+                                                colors =
+                                                    listOf(
+                                                        backdropPrimary.copy(alpha = 0.22f).compositeOver(backdropSurface),
+                                                        backdropTertiary.copy(alpha = 0.10f).compositeOver(backdropSurface),
+                                                        backdropSurface,
+                                                    ),
+                                            ),
+                                        )
+                                    }
                                 Column(
                                     // Measure the full content slot before the import card and top inset reduce the scaffold.
                                     Modifier
                                         .fillMaxSize()
+                                        .then(unifiedBackdrop)
                                         .onSizeChanged { size ->
                                             if (hasBottomNavigation && !useFloatingNavBar) {
                                                 navigationBarContentInset =
@@ -1598,8 +1619,6 @@ fun MetrolistApp(
                                                         actions = topBarActions,
                                                     )
                                                 } else {
-                                                    val bannerTint = if (pureBlack) Color.Transparent else MaterialTheme.colorScheme.primary
-                                                    val bannerAccent = if (pureBlack) Color.Transparent else MaterialTheme.colorScheme.tertiary
                                                     TopAppBar(
                                                         expandedHeight = TabTopBarHeight,
                                                         navigationIcon = {
@@ -1608,41 +1627,10 @@ fun MetrolistApp(
                                                         subtitle = topBarSubtitle,
                                                         actions = topBarActions,
                                                         scrollBehavior = topAppBarScrollBehavior,
-                                                        modifier =
-                                                            Modifier.drawWithContent {
-                                                                drawContent()
-                                                                drawRect(
-                                                                    brush =
-                                                                        Brush.verticalGradient(
-                                                                            colors = listOf(bannerTint.copy(alpha = 0.24f), Color.Transparent),
-                                                                        ),
-                                                                )
-                                                                drawRect(
-                                                                    brush =
-                                                                        Brush.horizontalGradient(
-                                                                            colors =
-                                                                                listOf(
-                                                                                    bannerTint.copy(alpha = 0.10f),
-                                                                                    Color.Transparent,
-                                                                                    bannerAccent.copy(alpha = 0.12f),
-                                                                                ),
-                                                                        ),
-                                                                )
-                                                            },
                                                         colors =
                                                             TopAppBarDefaults.topAppBarColors(
-                                                                containerColor =
-                                                                    if (pureBlack) {
-                                                                        Color.Black
-                                                                    } else {
-                                                                        MaterialTheme.colorScheme.surfaceContainer
-                                                                    },
-                                                                scrolledContainerColor =
-                                                                    if (pureBlack) {
-                                                                        Color.Black
-                                                                    } else {
-                                                                        MaterialTheme.colorScheme.surfaceContainer
-                                                                    },
+                                                                containerColor = if (pureBlack) Color.Black else Color.Transparent,
+                                                                scrolledContainerColor = if (pureBlack) Color.Black else Color.Transparent,
                                                                 titleContentColor = MaterialTheme.colorScheme.onSurface,
                                                                 actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                                                                 navigationIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant,

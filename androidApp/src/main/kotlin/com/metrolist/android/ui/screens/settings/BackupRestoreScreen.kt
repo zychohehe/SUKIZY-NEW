@@ -52,6 +52,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -1825,6 +1826,94 @@ fun BackupRestoreScreen(onNavigateBack: () -> Unit) {
         onNavigateBack = onNavigateBack,
     ) {
         if (isBusy) LinearWavyProgressIndicator(Modifier.fillMaxWidth())
+        // Semua platform import digabung dalam satu grid agar rapi dan mudah dipilih.
+        SettingsSubScreenGroup(title = stringResource(Res.string.playlist_imports_title)) {
+            ImportPlatformGrid(
+                platforms =
+                    listOf(
+                        ImportPlatform(
+                            title = stringResource(Res.string.import_provider_spotify),
+                            description = stringResource(Res.string.import_provider_spotify_desc),
+                            accent = Color(0xFF1DB954),
+                            monogram = "S",
+                            enabled = controlsEnabled,
+                            onClick = {
+                                spotifyInputUrl = ""
+                                showSpotifyProviderDialog = true
+                            },
+                        ),
+                        ImportPlatform(
+                            title = stringResource(Res.string.import_provider_apple_music),
+                            description = stringResource(Res.string.import_provider_apple_music_desc),
+                            accent = Color(0xFFFA243C),
+                            monogram = "A",
+                            enabled = controlsEnabled,
+                            onClick = {
+                                appleMusicInputUrl = ""
+                                showAppleMusicProviderDialog = true
+                            },
+                        ),
+                        ImportPlatform(
+                            title = stringResource(Res.string.import_provider_youtube),
+                            description = stringResource(Res.string.import_provider_youtube_desc),
+                            accent = Color(0xFFFF0033),
+                            monogram = "Y",
+                            enabled = controlsEnabled,
+                            onClick = {
+                                openLinkOrTextInput(
+                                    titleRes = Res.string.import_provider_youtube,
+                                    promptRes = Res.string.import_paste_youtube_link,
+                                    hintRes = Res.string.import_paste_youtube_hint,
+                                    isMultiline = false,
+                                    onSubmit = ::handleLinkOrTextSubmitted,
+                                )
+                            },
+                        ),
+                        ImportPlatform(
+                            title = stringResource(Res.string.import_provider_deezer),
+                            description = stringResource(Res.string.import_provider_deezer_desc),
+                            accent = Color(0xFFA238FF),
+                            monogram = "D",
+                            enabled = controlsEnabled,
+                            onClick = {
+                                deezerInputUrl = ""
+                                showDeezerProviderDialog = true
+                            },
+                        ),
+                        ImportPlatform(
+                            title = stringResource(Res.string.import_provider_tidal),
+                            description = stringResource(Res.string.import_provider_tidal_desc),
+                            accent = Color(0xFF0A84A5),
+                            monogram = "T",
+                            enabled = controlsEnabled,
+                            onClick = {
+                                tidalInputUrl = ""
+                                showTidalProviderDialog = true
+                            },
+                        ),
+                        ImportPlatform(
+                            title = stringResource(Res.string.import_provider_amazon),
+                            description = stringResource(Res.string.import_provider_amazon_desc),
+                            accent = Color(0xFF25A8D1),
+                            monogram = "a",
+                            enabled = controlsEnabled,
+                            onClick = {
+                                amazonInputUrl = ""
+                                showAmazonProviderDialog = true
+                            },
+                        ),
+                        ImportPlatform(
+                            title = stringResource(Res.string.import_provider_file),
+                            description = stringResource(Res.string.import_provider_file_desc),
+                            accent = MaterialTheme.colorScheme.primary,
+                            monogram = "F",
+                            enabled = controlsEnabled,
+                            onClick = { openPlaylistFile() },
+                        ),
+                    ),
+            )
+        }
+
         SettingsSubScreenGroup(
             title = stringResource(Res.string.backup_restore_title),
             items =
@@ -1876,80 +1965,6 @@ fun BackupRestoreScreen(onNavigateBack: () -> Unit) {
                                     arrayOf("application/zip", "application/octet-stream", "*/*"),
                                 )
                             }
-                        },
-                    ),
-                ),
-        )
-
-        SettingsSubScreenGroup(
-            title = stringResource(Res.string.playlist_imports_title),
-            items =
-                listOf(
-                    SettingsSubScreenItem(
-                        title = stringResource(Res.string.import_provider_spotify),
-                        description = stringResource(Res.string.import_provider_spotify_desc),
-                        enabled = controlsEnabled,
-                        onClick = {
-                            spotifyInputUrl = ""
-                            showSpotifyProviderDialog = true
-                        },
-                    ),
-                    SettingsSubScreenItem(
-                        title = stringResource(Res.string.import_provider_apple_music),
-                        description = stringResource(Res.string.import_provider_apple_music_desc),
-                        enabled = controlsEnabled,
-                        onClick = {
-                            appleMusicInputUrl = ""
-                            showAppleMusicProviderDialog = true
-                        },
-                    ),
-                    SettingsSubScreenItem(
-                        title = stringResource(Res.string.import_provider_youtube),
-                        description = stringResource(Res.string.import_provider_youtube_desc),
-                        enabled = controlsEnabled,
-                        onClick = {
-                            openLinkOrTextInput(
-                                titleRes = Res.string.import_provider_youtube,
-                                promptRes = Res.string.import_paste_youtube_link,
-                                hintRes = Res.string.import_paste_youtube_hint,
-                                isMultiline = false,
-                                onSubmit = ::handleLinkOrTextSubmitted,
-                            )
-                        },
-                    ),
-                    SettingsSubScreenItem(
-                        title = stringResource(Res.string.import_provider_deezer),
-                        description = stringResource(Res.string.import_provider_deezer_desc),
-                        enabled = controlsEnabled,
-                        onClick = {
-                            deezerInputUrl = ""
-                            showDeezerProviderDialog = true
-                        },
-                    ),
-                    SettingsSubScreenItem(
-                        title = stringResource(Res.string.import_provider_tidal),
-                        description = stringResource(Res.string.import_provider_tidal_desc),
-                        enabled = controlsEnabled,
-                        onClick = {
-                            tidalInputUrl = ""
-                            showTidalProviderDialog = true
-                        },
-                    ),
-                    SettingsSubScreenItem(
-                        title = stringResource(Res.string.import_provider_amazon),
-                        description = stringResource(Res.string.import_provider_amazon_desc),
-                        enabled = controlsEnabled,
-                        onClick = {
-                            amazonInputUrl = ""
-                            showAmazonProviderDialog = true
-                        },
-                    ),
-                    SettingsSubScreenItem(
-                        title = stringResource(Res.string.import_provider_file),
-                        description = stringResource(Res.string.import_provider_file_desc),
-                        enabled = controlsEnabled,
-                        onClick = {
-                            openPlaylistFile()
                         },
                     ),
                 ),
