@@ -11,8 +11,10 @@ import android.os.Build
 import android.provider.MediaStore
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.LocalOverscrollFactory
@@ -157,6 +159,8 @@ import androidx.navigation3.ui.NavDisplay
 import androidx.navigationevent.NavigationEventTransitionState
 import androidx.navigationevent.compose.NavigationEventDispatcherOwnerHostDefaultKey
 import androidx.navigationevent.compose.rememberNavigationEventDispatcherOwner
+import coil3.imageLoader
+import kotlinx.coroutines.CancellationException
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import com.metrolist.android.App
@@ -184,6 +188,7 @@ import com.metrolist.android.playback.voiceSearchRequest
 import com.metrolist.android.ui.component.BottomSheetMenu
 import com.metrolist.android.ui.component.FloatingTopAppBar
 import com.metrolist.android.ui.component.StreakChip
+import com.metrolist.android.ui.theme.PlayerColorExtractor
 import com.metrolist.android.ui.component.StreakSheet
 import com.metrolist.android.ui.component.rememberStreakState
 import com.metrolist.android.ui.component.LocalMenuState
