@@ -55,9 +55,9 @@ fun DragScrollableColumn(
     verticalArrangement: Arrangement.Vertical = Arrangement.Top,
     horizontalAlignment: Alignment.Horizontal = Alignment.Start,
     userScrollEnabled: Boolean = true,
+    flingBehavior: FlingBehavior = ScrollableDefaults.flingBehavior(),
     content: LazyListScope.() -> Unit,
 ) {
-    val flingBehavior = ScrollableDefaults.flingBehavior()
     LazyColumn(
         modifier = modifier.verticalMouseDragScroll(state, userScrollEnabled, flingBehavior),
         state = state,

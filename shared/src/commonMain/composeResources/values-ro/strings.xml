@@ -488,7 +488,7 @@
     <string name="backup_restore_busy">Se lucrează…</string>
     <string name="backup_sensitive_title">Backup sensibil</string>
     <string name="backup_sensitive_message">Backupul conține cheile tale API, datele de autentificare ale contului, cookie-urile de autentificare, tokenurile de sesiune și alte informații sensibile. Oricine care intră în posesia acestui fișier îți poate accesa conturile. Păstrează-l în siguranță. Nu-l partaja niciodată.</string>
-    <string name="restore_in_progress">Se restaurează backupul tău…\nMetrolist va fi repornit automat.</string>
+    <string name="restore_in_progress">Se restaurează backupul tău…\nSUKIZY va fi repornit automat.</string>
     <string name="scrobble_tap_to_disconnect">Atinge pentru a te deconecta</string>
     <string name="scrobble_enable">Scrobbling</string>
     <string name="scrobble_now_playing">Actualizări pentru Se redă acum</string>
@@ -1438,7 +1438,7 @@
     <string name="sensitive_backup">Backup sensibil</string>
     <string name="restore_backup_confirm">Restaurează backupul?</string>
     <string name="restore">Restaurează</string>
-    <string name="restoring_backup">Se restabilește backupul…\nMetrolist se va reporni automat.</string>
+    <string name="restoring_backup">Se restabilește backupul…\nSUKIZY se va reporni automat.</string>
     <string name="hidden_items_count">Elemente ascunse (%1$d)</string>
     <string name="hidden_library_items">Elemente ascunse din bibliotecă</string>
     <string name="delete_playlist_confirm">Ștergi playlistul?</string>

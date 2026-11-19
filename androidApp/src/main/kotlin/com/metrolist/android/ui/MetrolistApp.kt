@@ -102,6 +102,7 @@ import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.drawscope.clipRect
@@ -1146,7 +1147,7 @@ fun MetrolistApp(
                     val hostView = LocalView.current
                     val keepScreenOn =
                         (isPlayerExpanded && Settings.shared.keepScreenOnMode.keepsAwake(isPlaying, lyricsVisible)) ||
-                            (currentRoute in setOf(Screen.PlaylistImport, Screen.SpotifyImport, Screen.BackupRestore) && activeImport?.isRunning == true)
+                            (currentRoute in setOf(Screen.PlaylistImport, Screen.BackupRestore) && activeImport?.isRunning == true)
                     DisposableEffect(hostView, keepScreenOn) {
                         hostView.keepScreenOn = keepScreenOn
                         onDispose { hostView.keepScreenOn = false }
@@ -1597,6 +1598,8 @@ fun MetrolistApp(
                                                         actions = topBarActions,
                                                     )
                                                 } else {
+                                                    val bannerTint = if (pureBlack) Color.Transparent else MaterialTheme.colorScheme.primary
+                                                    val bannerAccent = if (pureBlack) Color.Transparent else MaterialTheme.colorScheme.tertiary
                                                     TopAppBar(
                                                         expandedHeight = TabTopBarHeight,
                                                         navigationIcon = {
@@ -1605,6 +1608,27 @@ fun MetrolistApp(
                                                         subtitle = topBarSubtitle,
                                                         actions = topBarActions,
                                                         scrollBehavior = topAppBarScrollBehavior,
+                                                        modifier =
+                                                            Modifier.drawWithContent {
+                                                                drawContent()
+                                                                drawRect(
+                                                                    brush =
+                                                                        Brush.verticalGradient(
+                                                                            colors = listOf(bannerTint.copy(alpha = 0.24f), Color.Transparent),
+                                                                        ),
+                                                                )
+                                                                drawRect(
+                                                                    brush =
+                                                                        Brush.horizontalGradient(
+                                                                            colors =
+                                                                                listOf(
+                                                                                    bannerTint.copy(alpha = 0.10f),
+                                                                                    Color.Transparent,
+                                                                                    bannerAccent.copy(alpha = 0.12f),
+                                                                                ),
+                                                                        ),
+                                                                )
+                                                            },
                                                         colors =
                                                             TopAppBarDefaults.topAppBarColors(
                                                                 containerColor =
@@ -2540,7 +2564,6 @@ fun getEntryProvider(
                 onNavigateToPlaylist = { id, thumbnail -> navigator.navigate(Screen.Playlist(id, thumbnailHint = thumbnail)) },
                 onNavigateToPodcast = { podcastId -> navigator.navigate(Screen.Podcast(podcastId)) },
                 onNavigateToPlaylistImport = { navigator.navigate(Screen.PlaylistImport) },
-                onNavigateToSpotifyImport = { navigator.navigate(Screen.SpotifyImport) },
                 onNavigateToAutoPlaylist = { type ->
                     // Keep podcast auto playlists on the Library stack so Back returns to the podcast library.
                     navigator.navigate(Screen.Library)
@@ -2783,10 +2806,6 @@ fun getEntryProvider(
 
         entry<Screen.PlaylistImport>(metadata = navTabMetadata) {
             PlaylistImportScreen(onNavigateBack = { navigator.goBack() })
-        }
-
-        entry<Screen.SpotifyImport>(metadata = navTabMetadata) {
-            PlaylistImportScreen(onNavigateBack = { navigator.goBack() }, openSpotifyOnStart = true)
         }
 
         entry<Screen.AndroidAuto>(metadata = navTabMetadata) {

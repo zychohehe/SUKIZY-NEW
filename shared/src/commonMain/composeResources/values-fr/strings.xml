@@ -513,7 +513,7 @@
     <string name="backup_restore_busy">Restauration en cours…</string>
     <string name="backup_sensitive_title">Données sensibles</string>
     <string name="backup_sensitive_message">Cette sauvegarde contient vos clés API, vos identifiants de connexion, vos cookies d\u0027authentification, vos jetons de session et d\u0027autres informations sensibles. Toute personne qui possède ce fichier peut accéder à vos comptes. Conservez-le en lieu sûr et ne le partagez jamais.</string>
-    <string name="restore_in_progress">Restauration de votre sauvegarde…\nMetrolist va redémarrer automatiquement.</string>
+    <string name="restore_in_progress">Restauration de votre sauvegarde…\nSUKIZY va redémarrer automatiquement.</string>
     <string name="scrobble_tap_to_disconnect">Appuyez pour vous déconnecter</string>
     <string name="scrobble_enable">Scrobbling</string>
     <string name="scrobble_connecting">Connexion en cours…</string>
@@ -1632,7 +1632,7 @@
     <string name="sensitive_backup">Données sensibles</string>
     <string name="restore_backup_confirm">Restaurer la sauvegarde ?</string>
     <string name="restore">Restaurer</string>
-    <string name="restoring_backup">Restauration de votre sauvegarde…\nMetrolist va redémarrer automatiquement.</string>
+    <string name="restoring_backup">Restauration de votre sauvegarde…\nSUKIZY va redémarrer automatiquement.</string>
     <string name="hidden_items_count">Éléments masqués (%1$d)</string>
     <string name="hidden_library_items">Éléments masqués de la bibliothèque</string>
     <string name="delete_playlist_confirm">Supprimer la playlist ?</string>

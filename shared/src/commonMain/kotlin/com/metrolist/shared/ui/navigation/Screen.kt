@@ -156,9 +156,6 @@ sealed class Screen : NavKey {
     data object PlaylistImport : Screen()
 
     @Serializable
-    data object SpotifyImport : Screen()
-
-    @Serializable
     data object Updates : Screen()
 
     @Serializable

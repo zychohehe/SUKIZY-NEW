@@ -8,7 +8,6 @@ import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
@@ -37,7 +36,6 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -113,9 +111,11 @@ import com.metrolist.shared.ui.components.YTListItem
 import com.metrolist.shared.ui.components.carouselArtworkShape
 import com.metrolist.shared.ui.components.rememberItemPlayback
 import com.metrolist.shared.ui.glass.GlassBlurPolicy
+import com.metrolist.shared.ui.glass.IosMotion
 import com.metrolist.shared.ui.utils.DragScrollableColumn
 import com.metrolist.shared.ui.utils.carouselScroll
 import com.metrolist.shared.ui.utils.desktopArrowScroll
+import com.metrolist.shared.ui.utils.rememberSmoothFlingBehavior
 import com.metrolist.shared.utils.formatDuration
 import com.metrolist.shared.utils.isDesktop
 import com.metrolist.shared.viewmodels.HomePaginationTrigger
@@ -223,8 +223,8 @@ fun HomeContent(
     val localShelfCache = remember { HomeShelfCache() }
     val paginationScrollConnection = rememberHomePagination(uiState, listState, onLoadMore)
     val listScrolling = listState.isScrollInProgress
-    LaunchedEffect(listScrolling) { GlassBlurPolicy.setScrolling(listScrolling) }
-    DisposableEffect(Unit) { onDispose { GlassBlurPolicy.setScrolling(false) } }
+    LaunchedEffect(listScrolling) { GlassBlurPolicy.updateScrolling(listScrolling) }
+    DisposableEffect(Unit) { onDispose { GlassBlurPolicy.updateScrolling(false) } }
     BoxWithConstraints(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         val isWide = maxWidth > 840.dp
         val effectiveShelves =
@@ -234,7 +234,8 @@ fun HomeContent(
             state = listState,
             modifier = Modifier.fillMaxSize().nestedScroll(paginationScrollConnection).desktopArrowScroll(listState),
             contentPadding = contentPadding,
-            verticalArrangement = Arrangement.spacedBy(if (isWide) 16.dp else 8.dp),
+            verticalArrangement = Arrangement.spacedBy(if (isWide) 20.dp else 12.dp),
+            flingBehavior = rememberSmoothFlingBehavior(),
         ) {
             header?.invoke(this)
 
@@ -373,15 +374,14 @@ private fun HomeShelfTransition(
     shelf: HomeShelf,
     content: @Composable (HomeShelf) -> Unit,
 ) {
-    val spatial = MaterialTheme.motionScheme.defaultSpatialSpec<Float>()
-    val sizeSpec = MaterialTheme.motionScheme.defaultSpatialSpec<IntSize>()
-    val effects = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
-    val fastEffects = MaterialTheme.motionScheme.fastEffectsSpec<Float>()
+    val sizeSpec = IosMotion.sizeSpec()
+    val effects = IosMotion.fade()
+    val fastEffects = IosMotion.fadeFast()
     AnimatedContent(
         targetState = shelf,
         contentKey = { current -> current.items.map(YTItem::id) },
         transitionSpec = {
-            (fadeIn(effects) + scaleIn(spatial, initialScale = 0.96f))
+            fadeIn(effects)
                 .togetherWith(fadeOut(fastEffects))
                 .using(SizeTransform(clip = false) { _, _ -> sizeSpec })
         },
@@ -421,9 +421,9 @@ fun LazyListScope.renderHomeShelves(
             item(key = "${shelf.key}_chip_header", contentType = "home_chip_header") {
                 Box(
                     Modifier.fillMaxWidth().animateItem(
-                        fadeInSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
-                        placementSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
-                        fadeOutSpec = MaterialTheme.motionScheme.fastEffectsSpec(),
+                        fadeInSpec = IosMotion.fade(),
+                        placementSpec = IosMotion.placement(),
+                        fadeOutSpec = IosMotion.fadeFast(),
                     ),
                     contentAlignment = Alignment.TopCenter,
                 ) {
@@ -434,12 +434,10 @@ fun LazyListScope.renderHomeShelves(
                             .padding(horizontal = if (isWide) 24.dp else 16.dp)
                             .padding(top = 16.dp, bottom = 8.dp),
                     ) {
-                        HorizontalDivider()
-                        Spacer(Modifier.height(16.dp))
                         Text(
                             title,
-                            style = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.primary,
+                            style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface,
                         )
                     }
                 }
@@ -449,9 +447,9 @@ fun LazyListScope.renderHomeShelves(
             item(key = shelf.key, contentType = "home_list_header") {
                 Box(
                     Modifier.fillMaxWidth().animateItem(
-                        fadeInSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
-                        placementSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
-                        fadeOutSpec = MaterialTheme.motionScheme.fastEffectsSpec(),
+                        fadeInSpec = IosMotion.fade(),
+                        placementSpec = IosMotion.placement(),
+                        fadeOutSpec = IosMotion.fadeFast(),
                     ),
                     contentAlignment = Alignment.TopCenter,
                 ) {
@@ -479,9 +477,9 @@ fun LazyListScope.renderHomeShelves(
                     Modifier
                         .fillMaxWidth()
                         .animateItem(
-                            fadeInSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
-                            placementSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
-                            fadeOutSpec = MaterialTheme.motionScheme.fastEffectsSpec(),
+                            fadeInSpec = IosMotion.fade(),
+                            placementSpec = IosMotion.placement(),
+                            fadeOutSpec = IosMotion.fadeFast(),
                         ).padding(bottom = if (index == shelf.items.lastIndex) 16.dp else 0.dp),
                     contentAlignment = Alignment.TopCenter,
                 ) {
@@ -508,9 +506,9 @@ fun LazyListScope.renderHomeShelves(
                 modifier =
                     Modifier
                         .animateItem(
-                            fadeInSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
-                            placementSpec = MaterialTheme.motionScheme.defaultSpatialSpec(),
-                            fadeOutSpec = MaterialTheme.motionScheme.fastEffectsSpec(),
+                            fadeInSpec = IosMotion.fade(),
+                            placementSpec = IosMotion.placement(),
+                            fadeOutSpec = IosMotion.fadeFast(),
                         ).fillMaxWidth()
                         .padding(bottom = if (isWide) 24.dp else 16.dp),
                 contentAlignment = Alignment.TopCenter,
@@ -1005,8 +1003,8 @@ private fun HomeMoodsShelf(
     isWide: Boolean = false,
 ) {
     val cardWidth = if (isWide) 240.dp else 185.dp
-    HomeGallery(shelf, 4, cardWidth, 56.dp, 6.dp, rowSpacing = 6.dp, isWide = isWide) { index, item ->
-        MoodsItem(item, index, shelf.items.size, cardWidth, isItemEnabled, onItemClick)
+    HomeGallery(shelf, 4, cardWidth, 56.dp, 8.dp, rowSpacing = 8.dp, isWide = isWide) { _, item ->
+        MoodsItem(item, cardWidth, isItemEnabled, onItemClick)
     }
 }
 
@@ -1072,8 +1070,6 @@ private fun HomeGallery(
 @Composable
 private fun MoodsItem(
     item: YTItem,
-    index: Int,
-    count: Int,
     cardWidth: Dp,
     isItemEnabled: (YTItem) -> Boolean,
     onItemClick: (YTItem) -> Unit,
@@ -1081,13 +1077,6 @@ private fun MoodsItem(
     GenreCard(
         title = item.title,
         onClick = { if (isItemEnabled(item)) onItemClick(item) },
-        shape =
-            RoundedCornerShape(
-                topStart = if (index == 0) 12.dp else 5.dp,
-                topEnd = if (index == (count - 1) / 4 * 4) 12.dp else 5.dp,
-                bottomStart = if (index == minOf(3, count - 1)) 12.dp else 5.dp,
-                bottomEnd = if (index == count - 1) 12.dp else 5.dp,
-            ),
         modifier = Modifier.width(cardWidth),
     )
 }

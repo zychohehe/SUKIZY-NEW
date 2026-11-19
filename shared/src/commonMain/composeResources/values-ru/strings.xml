@@ -501,7 +501,7 @@
     <string name="backup_restore_busy">Выполнение…</string>
     <string name="backup_sensitive_title">Конфиденциальный бэкап</string>
     <string name="backup_sensitive_message">Бэкап содержит ваши ключи API, данные входа в аккаунты, файлы cookie авторизации, токены сессий и другую конфиденциальную информацию. Любой, у кого есть этот файл, получит доступ к вашим аккаунтам. Храните его в безопасном месте и никогда не делитесь им.</string>
-    <string name="restore_in_progress">Восстановление вашего бэкапа…\nMetrolist перезапустится автоматически.</string>
+    <string name="restore_in_progress">Восстановление вашего бэкапа…\nSUKIZY перезапустится автоматически.</string>
     <string name="scrobble_tap_to_disconnect">Нажмите, чтобы отключиться</string>
     <string name="scrobble_enable">Скробблинг</string>
     <string name="scrobble_now_playing">Обновления Сейчас Играет</string>
@@ -1478,7 +1478,7 @@
     <string name="sensitive_backup">Конфиденциальный бэкап</string>
     <string name="restore_backup_confirm">Восстановить бэкап?</string>
     <string name="restore">Восстановить</string>
-    <string name="restoring_backup">Восстановление вашего бэкапа…\nMetrolist перезапустится автоматически.</string>
+    <string name="restoring_backup">Восстановление вашего бэкапа…\nSUKIZY перезапустится автоматически.</string>
     <string name="hidden_items_count">Спрятанные элементы (%1$d)</string>
     <string name="hidden_library_items">Спрятанные элементы библиотеки</string>
     <string name="delete_playlist_confirm">Удалить плейлист?</string>

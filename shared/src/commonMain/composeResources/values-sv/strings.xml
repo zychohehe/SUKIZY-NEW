@@ -471,7 +471,7 @@
     <string name="backup_restore_busy">Arbetar…</string>
     <string name="backup_sensitive_title">Känslig säkerhetskopia</string>
     <string name="backup_sensitive_message">Säkerhetskopior innehåller dina API-nycklar, kontouppgifter, autentiseringscookies, sessionstoken och annan känslig information. Den som kommer över denna fil kommer att kunna få åtkomst till dina konton. Förvara den säkert och DELA DEN ALDRIG MED NÅGON.</string>
-    <string name="restore_in_progress">Återställer din säkerhetskopia…\nMetrolist startar om automatiskt.</string>
+    <string name="restore_in_progress">Återställer din säkerhetskopia…\nSUKIZY startar om automatiskt.</string>
     <string name="scrobble_tap_to_disconnect">Tryck för att koppla från</string>
     <string name="scrobble_enable">Aktivera scrobbling</string>
     <string name="scrobble_now_playing">Spelar nu uppdateringar</string>
@@ -1188,7 +1188,7 @@
     <string name="onboarding_finish_description">Installationen är klar. Börja lyssna, eller ta med ditt konto och dina data först.</string>
     <string name="finish">Slutför</string>
     <string name="onboarding_restore_backup">Återställ från säkerhetskopiering</string>
-    <string name="onboarding_settings_hint">Ändra Metrolists inställningar i menyn uppe till höger.</string>
+    <string name="onboarding_settings_hint">Ändra SUKIZYs inställningar i menyn uppe till höger.</string>
     <string name="onboarding_no_saved_accounts">Inga länkade konton hittades.</string>
     <string name="onboarding_account_picture">%1$s profilbild</string>
     <string name="migrated">Flyttad</string>
@@ -1390,7 +1390,7 @@
         <item quantity="other">%1$d sånger</item>
     </plurals>
     <string name="app_data">Appdata</string>
-    <string name="create_backup_dialog_title">Skapa Metrolistsäkerhetskopia</string>
+    <string name="create_backup_dialog_title">Skapa SUKIZYsäkerhetskopia</string>
     <string name="backup_created">Säkerhetskopia skapad</string>
     <string name="backup_failed">Säkerhetskopiering misslyckades: %1$s</string>
     <string name="could_not_open_file_picker">Kunde inte öppna filväljare: %1$s</string>

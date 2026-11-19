@@ -240,7 +240,7 @@
     <string name="about">Rakenduse teave</string>
     <string name="credits_android_lead">Pea androidi arendaja</string>
     <string name="credits_desktop_lead">Pea arvuti arendaja</string>
-    <string name="credits_creator">Metrolisti autor</string>
+    <string name="credits_creator">SUKIZYi autor</string>
     <string name="credits_android_developer">Androidi arendaja</string>
     <string name="credits_desktop_developer">Arvuti arendaja</string>
     <string name="credits_macos_developer">MacOS arendaja</string>
@@ -321,7 +321,7 @@
     <string name="import_error_unsupported_playlist_entries">See esitusloend sisaldab kohalikke faile või otselinke, millele Android ei pääse juurde. Impordi YouTube’i linkidega esitusloend või vali kohalikud failid arvutis.</string>
     <string name="import_error_local_files_require_local_playlist">Kohalikke helifaile saab importida ainult kohalikku esitusloendisse.</string>
     <string name="import_error_file_read_failed">Esitusloendi faili ei õnnestunud lugeda. Vali see uuesti ja anna failile juurdepääs.</string>
-    <string name="startup_error_title">Metrolisti käivitamise viga</string>
+    <string name="startup_error_title">SUKIZYi käivitamise viga</string>
     <string name="lyrics_show_translations">Kuva tõlked</string>
     <string name="artist_latest_release">Uusim väljalase</string>
     <string name="top_tracks">Populaarseimad lood</string>
@@ -356,7 +356,7 @@
     <string name="available_devices">Saadaolevad seadmed</string>
     <string name="no_device_connected">Ühtegi seadet pole ühendatud</string>
     <string name="no_device_found">Ühtegi seadet ei leitud</string>
-    <string name="no_compatible_devices">Ühtegi Google Casti, FCasti, DLNA või Metrolistiga ühilduvat seadet ei leitud.</string>
+    <string name="no_compatible_devices">Ühtegi Google Casti, FCasti, DLNA või SUKIZYiga ühilduvat seadet ei leitud.</string>
     <string name="show_player_cast_button">Kuva ülekandenupp</string>
     <string name="show_player_video_button">Kuva heli ja video valik</string>
     <string name="onboarding_language_lyrics_description">Vali rakenduse keel ja laulusõnade kuvamise viis.</string>
@@ -526,10 +526,10 @@
     <string name="top_period_past_year">Viimane aasta</string>
     <string name="onboarding_welcome_description">Seadista privaatsus ja süsteemiõigused enne esimest kuulamist.</string>
     <string name="onboarding_migration_title">Sinu v13 muusikakogu on siin</string>
-    <string name="onboarding_migration_description">Leidsime eraldiseisva Metrolisti andmebaasi. Kanna esitusloendid, kuulamisajalugu, meeldivaks märgitud lood ja muusikakogu andmed üle kohapeal. Kui ülekandmine ebaõnnestub, saad algse andmebaasi taastada.</string>
+    <string name="onboarding_migration_description">Leidsime eraldiseisva SUKIZYi andmebaasi. Kanna esitusloendid, kuulamisajalugu, meeldivaks märgitud lood ja muusikakogu andmed üle kohapeal. Kui ülekandmine ebaõnnestub, saad algse andmebaasi taastada.</string>
     <string name="onboarding_migration_complete_title">Sinu konto on üle kantud</string>
-    <string name="onboarding_migration_complete_description">Sinu konto, esitusloendid, kuulamisajalugu, meeldivaks märgitud lood ja muusikakogu andmed on selles Metrolisti versioonis valmis.</string>
-    <string name="onboarding_crash_reports_title">Aita Metrolisti paremaks muuta</string>
+    <string name="onboarding_migration_complete_description">Sinu konto, esitusloendid, kuulamisajalugu, meeldivaks märgitud lood ja muusikakogu andmed on selles SUKIZYi versioonis valmis.</string>
+    <string name="onboarding_crash_reports_title">Aita SUKIZYi paremaks muuta</string>
     <string name="onboarding_crash_reports_description">Jaga soovi korral Sentry kaudu diagnostikaandmeid, et aidata meil probleeme leida ja parandada. Saad seda igal ajal seadistustes muuta.</string>
     <string name="onboarding_notifications_title">Luba teavitused</string>
     <string name="onboarding_notifications_description">Lülita sisse taasesituse ja allalaadimiste teavitused.</string>
@@ -545,10 +545,10 @@
     <string name="onboarding_finish_title">Kõik on valmis</string>
     <string name="onboarding_finish_description">Seadistamine on lõpetatud. Alusta kuulamist või too esmalt oma konto ja andmed üle.</string>
     <string name="onboarding_restore_backup">Taasta varukoopiast</string>
-    <string name="onboarding_settings_hint">Metrolisti kohandamiseks ava paremal ülal asuvast menüüst Seadistused.</string>
+    <string name="onboarding_settings_hint">SUKIZYi kohandamiseks ava paremal ülal asuvast menüüst Seadistused.</string>
     <string name="onboarding_no_saved_accounts">Seotud kontosid ei leitud.</string>
     <string name="onboarding_account_picture">Kasutaja %1$s profiilipilt</string>
-    <string name="onboarding_backup_picker_title">Taasta Metrolisti varukoopia</string>
+    <string name="onboarding_backup_picker_title">Taasta SUKIZYi varukoopia</string>
     <string name="onboarding_backup_picker_error">Varukoopia valijat ei saanud avada: %1$s</string>
     <string name="onboarding_backup_restore_failed">Taastamine ebaõnnestus: %1$s</string>
     <string name="new_badge">Uus</string>

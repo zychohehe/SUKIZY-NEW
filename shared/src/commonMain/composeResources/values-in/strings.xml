@@ -413,7 +413,7 @@
     <string name="backup_restore_export_desc">Ekspor pengaturan, database koleksi, playlist, lagu yang disukai, dan riwayat ke file zip</string>
     <string name="backup_restore_import_desc">Pulihkan cadangan SUKIZY. Aplikasi akan dimulai ulang setelah pemulihan berhasil.</string>
     <string name="backup_sensitive_title">Cadangan sensitif</string>
-    <string name="restore_in_progress">Memulihkan cadangan Anda…\nMetrolist akan dimuat ulang secara otomatis.</string>
+    <string name="restore_in_progress">Memulihkan cadangan Anda…\nSUKIZY akan dimuat ulang secara otomatis.</string>
     <string name="scrobble_tap_to_disconnect">Tekan untuk memutuskan sambungan</string>
     <string name="scrobble_enable">Scrobbling</string>
     <string name="scrobble_now_playing">Pembaruan sedang diputar</string>
@@ -1163,7 +1163,7 @@
     <string name="sensitive_backup">Cadangan sensitif</string>
     <string name="restore_backup_confirm">Pulihkan cadangan?</string>
     <string name="restore">Pulihkan</string>
-    <string name="restoring_backup">Memulihkan cadangan Anda…\nMetrolist akan memuat ulang sendirinya.</string>
+    <string name="restoring_backup">Memulihkan cadangan Anda…\nSUKIZY akan memuat ulang sendirinya.</string>
     <string name="settings_layout_canvas">Kanvas</string>
     <string name="spotify_import_error_sign_in_failed">Gagal masuk ke Spotify.</string>
     <plurals name="spotify_import_skipped_playlists">

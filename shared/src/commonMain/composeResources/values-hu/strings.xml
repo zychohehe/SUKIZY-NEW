@@ -457,7 +457,7 @@
     <string name="settings_listen_together_overview">Kiszolgáló, csatlakozási kérelmek és daljavaslatok</string>
     <string name="settings_device_connect_overview">Közeli eszközök, párosítás és távoli lejátszás</string>
     <string name="settings_release_overview">Kiadási megjegyzések és telepítési lehetőségek</string>
-    <string name="settings_notification_access_summary">Válaszd ki, mely értesítéseket engedélyezze az Android a Metrolistnek</string>
+    <string name="settings_notification_access_summary">Válaszd ki, mely értesítéseket engedélyezze az Android a SUKIZYnek</string>
     <string name="settings_crash_reports_summary">Olvasd el és oszd meg a mentett összeomlási jelentéseket</string>
     <string name="settings_content_language_summary">A YouTube Music keresésének és ajánlásainak nyelve</string>
     <string name="settings_content_country_summary">A YouTube Music slágerlistáinak és ajánlásainak régiója</string>
@@ -477,7 +477,7 @@
     <string name="settings_canvas_playback_summary">Rövid klipek vagy a teljes videóklip lejátszása a lejátszó mögött</string>
     <string name="settings_normalization_summary">Egyenlítsd ki a dalok hangerejét a nagy eltérések elkerüléséhez</string>
     <string name="settings_loudness_target_summary">Állítsd be a célhangerőt bekapcsolt hangnormalizálás mellett</string>
-    <string name="settings_stop_on_close_summary">Álljon le a lejátszás, ha a Metrolistet eltávolítod a legutóbbi alkalmazások közül</string>
+    <string name="settings_stop_on_close_summary">Álljon le a lejátszás, ha a SUKIZYet eltávolítod a legutóbbi alkalmazások közül</string>
     <string name="settings_screen_awake_summary">Válaszd ki, hogy a lejátszó vagy a dalszöveg tartsa-e ébren a kijelzőt</string>
     <string name="settings_translation_mode_summary">A szavak fordítása vagy a kiejtés átírása a célnyelv írásrendszerébe</string>
     <string name="settings_translation_provider_summary">Válaszd ki a dalszövegeket fordító szolgáltatást</string>

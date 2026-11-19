@@ -479,7 +479,7 @@
     <string name="backup_restore_busy">İşleniyor…</string>
     <string name="backup_sensitive_title">Hassas yedekleme</string>
     <string name="backup_sensitive_message">Yedekler; API anahtarlarınızı, hesap kimlik bilgilerinizi, kimlik doğrulama çerezlerinizi, oturum belirteçlerinizi ve diğer hassas bilgileri içerir. Bu dosyaya sahip olan herkes hesaplarınıza erişebilir. Güvenli bir yerde saklayın. Asla paylaşmayın.</string>
-    <string name="restore_in_progress">Yedeğiniz geri yükleniyor…\nMetrolist otomatik olarak yeniden başlatılacak.</string>
+    <string name="restore_in_progress">Yedeğiniz geri yükleniyor…\nSUKIZY otomatik olarak yeniden başlatılacak.</string>
     <string name="scrobble_tap_to_disconnect">Bağlantıyı kesmek için dokunun</string>
     <string name="scrobble_enable">Scrobble’ı etkinleştir</string>
     <string name="scrobble_now_playing">Şu an çalınan güncellemeleri</string>
@@ -1409,7 +1409,7 @@
     <string name="sensitive_backup">Hassas yedek</string>
     <string name="restore_backup_confirm">Yedek geri yüklensin mi?</string>
     <string name="restore">Geri yükle</string>
-    <string name="restoring_backup">Yedeğiniz geri yükleniyor…\nMetrolist otomatik olarak yeniden başlatılacak.</string>
+    <string name="restoring_backup">Yedeğiniz geri yükleniyor…\nSUKIZY otomatik olarak yeniden başlatılacak.</string>
     <string name="hidden_items_count">Gizlenen ögeler (%1$d)</string>
     <string name="hidden_library_items">Gizlenen kütüphane ögeleri</string>
     <string name="delete_playlist_confirm">Çalma listesi silinsin mi?</string>

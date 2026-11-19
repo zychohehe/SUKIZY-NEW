@@ -49,7 +49,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -71,6 +70,7 @@ import com.metrolist.android.playlistimport.TidalLoginScreen
 import com.metrolist.android.playlistimport.containsAndroidInaccessibleReference
 import com.metrolist.android.playlistimport.preparePlaylistBatch
 import com.metrolist.android.playlistimport.readPlaylistFile
+import com.metrolist.android.spotifyimport.SpotifyImportLaunchRequest
 import com.metrolist.android.spotifyimport.SpotifyLoginScreen
 import com.metrolist.android.spotifyimport.SpotifyPlaylistPickerSheet
 import com.metrolist.android.spotifyimport.SpotifyPlaylistPreviewSheet
@@ -277,10 +277,7 @@ private suspend fun resolveImportError(throwable: Throwable?): String {
 
 @Composable
 @Suppress("FunctionName")
-fun BackupRestoreScreen(
-    onNavigateBack: () -> Unit,
-    openSpotifyOnStart: Boolean = false,
-) {
+fun BackupRestoreScreen(onNavigateBack: () -> Unit) {
     val importedPlaylistText = stringResource(Res.string.imported_playlist)
     val playlistText = stringResource(Res.string.playlist)
     val unknownText = stringResource(Res.string.unknown)
@@ -349,11 +346,11 @@ fun BackupRestoreScreen(
 
     var showSpotifyProviderDialog by remember { mutableStateOf(false) }
     var spotifyInputUrl by remember { mutableStateOf("") }
-    // Entering from the Library card skips the settings list and opens Spotify directly, once.
-    var spotifyAutoOpened by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(openSpotifyOnStart) {
-        if (openSpotifyOnStart && !spotifyAutoOpened) {
-            spotifyAutoOpened = true
+    val spotifyLaunchPending by SpotifyImportLaunchRequest.isPending.collectAsState()
+    LaunchedEffect(spotifyLaunchPending) {
+        if (spotifyLaunchPending) {
+            SpotifyImportLaunchRequest.consume()
+            spotifyInputUrl = ""
             showSpotifyProviderDialog = true
         }
     }

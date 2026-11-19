@@ -429,7 +429,7 @@
     <string name="backup_restore_busy">Laden…</string>
     <string name="backup_sensitive_title">Gevoelige backup</string>
     <string name="backup_sensitive_message">Reservekopieën bevatten je API-sleutels, inloggegevens, authenticatiecookies, sessietokens en andere gevoelige informatie. Iedereen met dit bestand kan toegang krijgen tot je accounts. Bewaar het veilig en deel het nooit.</string>
-    <string name="restore_in_progress">Je backup aan het herstellen…\nMetrolist zal automatisch herstarten.</string>
+    <string name="restore_in_progress">Je backup aan het herstellen…\nSUKIZY zal automatisch herstarten.</string>
     <string name="scrobble_tap_to_disconnect">Tik om de verbinding te verbreken</string>
     <string name="playback_speed_value" translatable="false">%1$sx</string>
     <string name="equalizer">Egalisator</string>

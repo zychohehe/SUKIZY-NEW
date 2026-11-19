@@ -485,7 +485,7 @@
     <string name="backup_restore_busy">Elaborazione in corso…</string>
     <string name="backup_sensitive_title">Backup con dati sensibili</string>
     <string name="backup_sensitive_message">I backup contengono le tue chiavi API, credenziali dell\u0027account, cookie di autenticazione, token di sessione e altre informazioni sensibili. Chiunque entri in possesso di questo file potrà accedere ai tuoi account. Conservalo in un luogo sicuro e non condividerlo con nessuno.</string>
-    <string name="restore_in_progress">Ripristinando il tuo backup...\nMetrolist si riavvierà automaticamente.</string>
+    <string name="restore_in_progress">Ripristinando il tuo backup...\nSUKIZY si riavvierà automaticamente.</string>
     <string name="scrobble_tap_to_disconnect">Tocca per disconnettere</string>
     <string name="scrobble_enable">Scrobbling</string>
     <string name="scrobble_now_playing">Aggiornamenti in riproduzione</string>
@@ -1490,7 +1490,7 @@
     <string name="sensitive_backup">Backup sensibile</string>
     <string name="restore_backup_confirm">Ripristinare backup?</string>
     <string name="restore">Ripristina</string>
-    <string name="restoring_backup">Ripristinando il tuo backup...\nMetrolist si riavvierà automaticamente.</string>
+    <string name="restoring_backup">Ripristinando il tuo backup...\nSUKIZY si riavvierà automaticamente.</string>
     <string name="hidden_library_items">Elementi nascosti in libreria</string>
     <string name="delete_playlist_confirm">Eliminare playlist?</string>
     <string name="join_room">Unisciti a una stanza</string>

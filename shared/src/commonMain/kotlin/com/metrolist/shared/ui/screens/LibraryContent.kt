@@ -255,7 +255,7 @@ fun LibraryContent(
     onSearchDescendingChange: (Boolean) -> Unit = {},
     onPlayAlbum: ((AlbumItem) -> Unit)? = null,
     presentation: LibraryPresentation = remember { LibraryPresentation() },
-    headerExtra: (@Composable () -> Unit)? = null,
+    headerBanner: (@Composable () -> Unit)? = null,
 ) {
     val currentSongIdState = rememberUpdatedState(currentSongId)
     val isPlayingState = rememberUpdatedState(isPlaying)
@@ -393,8 +393,8 @@ fun LibraryContent(
         val currentGridView = isGridView
         val retainedScrollState = scrollState
         val gridScrolling = scrollState.isScrollInProgress
-        LaunchedEffect(gridScrolling) { GlassBlurPolicy.setScrolling(gridScrolling) }
-        DisposableEffect(Unit) { onDispose { GlassBlurPolicy.setScrolling(false) } }
+        LaunchedEffect(gridScrolling) { GlassBlurPolicy.updateScrolling(gridScrolling) }
+        DisposableEffect(Unit) { onDispose { GlassBlurPolicy.updateScrolling(false) } }
         Crossfade(
             targetState = isGridView,
             animationSpec = MaterialTheme.motionScheme.fastEffectsSpec(),
@@ -467,9 +467,9 @@ fun LibraryContent(
                             onGridViewChange = onGridViewChange,
                         )
                     }
-                    if (headerExtra != null) {
-                        item(key = "library_extra", contentType = "extra", span = { GridItemSpan(maxLineSpan) }) {
-                            Box(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 4.dp)) { headerExtra() }
+                    if (headerBanner != null && searchQuery.isBlank() && !isSearchOpen) {
+                        item(key = "library_banner", contentType = "banner", span = { GridItemSpan(maxLineSpan) }) {
+                            Box(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 4.dp).animateItem()) { headerBanner() }
                         }
                     }
                     if (onSearchQueryChange != null) {

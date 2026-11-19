@@ -475,7 +475,7 @@
     <string name="backup_restore_busy">Wird ausgeführt…</string>
     <string name="backup_sensitive_title">Sensibles Backup</string>
     <string name="backup_sensitive_message">Backups enthalten API-Schlüssel, Anmeldedaten, Authentifizierungs-Cookies, Sitzungs-Tokens und andere sensible Informationen. Jeder mit Zugriff auf diese Datei kann auf deine Konten zugreifen. Bewahre sie sicher auf. Teile sie mit niemandem.</string>
-    <string name="restore_in_progress">Backup wird wiederhergestellt…\nMetrolist startet automatisch neu.</string>
+    <string name="restore_in_progress">Backup wird wiederhergestellt…\nSUKIZY startet automatisch neu.</string>
     <string name="scrobble_tap_to_disconnect">Tippen zum Trennen</string>
     <string name="scrobble_enable">Scrobbeln</string>
     <string name="scrobble_now_playing">"Aktuelle Wiedergabe"-Updates</string>
@@ -1402,7 +1402,7 @@
     <string name="sensitive_backup">Sensibles Backup</string>
     <string name="restore_backup_confirm">Sicherung wiederherstellen?</string>
     <string name="restore">Wiederherstellen</string>
-    <string name="restoring_backup">Sicherung wird wiederhergestellt…\nMetrolist startet automatisch neu.</string>
+    <string name="restoring_backup">Sicherung wird wiederhergestellt…\nSUKIZY startet automatisch neu.</string>
     <string name="hidden_items_count">Ausgeblendete Elemente (%1$d)</string>
     <string name="hidden_library_items">Ausgeblendete Bibliothekselemente</string>
     <string name="delete_playlist_confirm">Playlist löschen?</string>

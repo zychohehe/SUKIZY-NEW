@@ -481,7 +481,7 @@
     <string name="backup_restore_busy">Treballant…</string>
     <string name="backup_sensitive_title">Còpia de seguretat sensible</string>
     <string name="backup_sensitive_message">Les còpies de seguretat contenen les teves claus d’API, credencials de compte, galetes d’autenticació, testimonis de sessió i altres dades sensibles. Qualsevol persona que tingui aquest fitxer pot accedir als teus comptes. Desa’l en un lloc segur. No el comparteixis mai.</string>
-    <string name="restore_in_progress">S’està restaurant la còpia de seguretat…\nMetrolist es reiniciarà automàticament.</string>
+    <string name="restore_in_progress">S’està restaurant la còpia de seguretat…\nSUKIZY es reiniciarà automàticament.</string>
     <string name="scrobble_tap_to_disconnect">Toca per desconnectar</string>
     <string name="scrobble_enable">Registre de reproduccions (scrobbling)</string>
     <string name="scrobble_now_playing">Actualitzacions de reproducció actual</string>
@@ -1428,7 +1428,7 @@
     <string name="sensitive_backup">Còpia de seguretat sensible</string>
     <string name="restore_backup_confirm">Restaurar la còpia de seguretat?</string>
     <string name="restore">Restaura</string>
-    <string name="restoring_backup">S’està restaurant la còpia de seguretat…\nMetrolist es reiniciarà automàticament.</string>
+    <string name="restoring_backup">S’està restaurant la còpia de seguretat…\nSUKIZY es reiniciarà automàticament.</string>
     <string name="hidden_items_count">Elements ocults (%1$d)</string>
     <string name="hidden_library_items">Elements de biblioteca ocults</string>
     <string name="delete_playlist_confirm">Eliminar llista de reproducció</string>

@@ -15,20 +15,15 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -63,9 +58,6 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -109,7 +101,6 @@ import com.metrolist.shared.ui.components.ChipShelf
 import com.metrolist.shared.ui.components.HomeLoadingPlaceholder
 import com.metrolist.shared.ui.components.PopupVisibility
 import com.metrolist.shared.ui.components.RefreshIndicator
-import com.metrolist.shared.ui.components.StatusBarBanner
 import com.metrolist.shared.ui.icons.MetrolistIcons
 import com.metrolist.shared.ui.navigation.LocalRootContentActive
 import com.metrolist.shared.ui.screens.HomeContent
@@ -365,14 +356,6 @@ fun HomeScreen(
     Box(
         modifier = Modifier.fillMaxSize().nestedScroll(fabNestedScrollConnection),
     ) {
-        if (!isTv) {
-            // Soft colour banner behind the status bar; fades out as the feed scrolls up.
-            StatusBarBanner(
-                scrollFraction = {
-                    if (listState.firstVisibleItemIndex > 0) 1f else listState.firstVisibleItemScrollOffset / 600f
-                },
-            )
-        }
         if (enablePullToRefresh) {
             val pullToRefreshState = rememberPullToRefreshState()
             PullToRefreshBox(

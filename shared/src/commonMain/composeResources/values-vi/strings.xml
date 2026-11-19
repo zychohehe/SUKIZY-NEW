@@ -888,7 +888,7 @@
     <string name="foreign_import_failed">Nhập thất bại: %1$s</string>
     <string name="backup_sensitive_title">Bản sao lưu nhạy cảm</string>
     <string name="backup_sensitive_message">Bản sao lưu chứa khóa API, thông tin xác thực tài khoản, cookie xác thực, mã thông báo phiên và các thông tin nhạy cảm khác. Bất kỳ ai có tệp này đều có thể truy cập tài khoản của bạn. Hãy lưu trữ an toàn và tuyệt đối không chia sẻ.</string>
-    <string name="restore_in_progress">Đang khôi phục bản sao lưu của bạn…\nMetrolist sẽ tự động khởi động lại.</string>
+    <string name="restore_in_progress">Đang khôi phục bản sao lưu của bạn…\nSUKIZY sẽ tự động khởi động lại.</string>
     <string name="scrobble_tap_to_disconnect">Chạm để ngắt kết nối</string>
     <string name="scrobble_enable">Scrobble</string>
     <string name="scrobble_now_playing">Cập nhật “Đang phát”</string>
@@ -1865,7 +1865,7 @@
     <string name="sensitive_backup">Bản sao lưu nhạy cảm</string>
     <string name="restore_backup_confirm">Khôi phục bản sao lưu?</string>
     <string name="restore">Khôi phục</string>
-    <string name="restoring_backup">Đang khôi phục bản sao lưu của bạn…\nMetrolist sẽ tự động khởi động lại.</string>
+    <string name="restoring_backup">Đang khôi phục bản sao lưu của bạn…\nSUKIZY sẽ tự động khởi động lại.</string>
     <string name="hidden_items_count">Mục đã ẩn (%1$d)</string>
     <string name="hidden_library_items">Mục thư viện đã ẩn</string>
     <string name="delete_playlist_confirm">Xóa danh sách phát?</string>

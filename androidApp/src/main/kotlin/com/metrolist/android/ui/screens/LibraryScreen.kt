@@ -74,7 +74,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.metrolist.android.LocalMiniPlayerBottomInset
 import com.metrolist.android.extensions.isInternetConnected
 import com.metrolist.android.playback.LocalPlayerConnection
+import com.metrolist.android.spotifyimport.SpotifyImportLaunchRequest
 import com.metrolist.android.ui.component.AdaptiveModalBottomSheet
+import com.metrolist.android.ui.component.SpotifyImportBanner
 import com.metrolist.android.ui.component.SwipeGestureHandler
 import com.metrolist.android.ui.component.tabContentTopPadding
 import com.metrolist.android.ui.components.handleItemClick
@@ -101,6 +103,7 @@ import com.metrolist.shared.generated.resources.delete
 import com.metrolist.shared.generated.resources.delete_playlist_question
 import com.metrolist.shared.generated.resources.error_occurred
 import com.metrolist.shared.generated.resources.hide_from_library
+import com.metrolist.shared.generated.resources.import_from_spotify
 import com.metrolist.shared.generated.resources.import_playlist
 import com.metrolist.shared.generated.resources.more_options
 import com.metrolist.shared.generated.resources.new_playlist
@@ -137,8 +140,6 @@ import com.metrolist.shared.ui.components.FabMenuPopup
 import com.metrolist.shared.ui.components.LibraryItemContainer
 import com.metrolist.shared.ui.components.PopupVisibility
 import com.metrolist.shared.ui.components.RefreshIndicator
-import com.metrolist.shared.ui.components.SpotifyImportCard
-import com.metrolist.shared.ui.components.StatusBarBanner
 import com.metrolist.shared.ui.components.ScrollingAddButton
 import com.metrolist.shared.ui.components.rememberScrollingFabState
 import com.metrolist.shared.ui.icons.MetrolistIcons
@@ -176,7 +177,6 @@ fun LibraryScreen(
     onNavigateToPodcast: (String) -> Unit = {},
     onNavigateToAutoPlaylist: ((String) -> Unit)? = null,
     onNavigateToPlaylistImport: () -> Unit = {},
-    onNavigateToSpotifyImport: () -> Unit = {},
     floatingActionsBottomInset: State<Dp>,
     scrollToTopEvents: Flow<Long> = emptyFlow(),
     viewModel: LibraryViewModel = koinViewModel(),
@@ -481,12 +481,6 @@ fun LibraryScreen(
                 autoPlaylists = autoPlaylists,
                 hiddenItemKeys = hiddenItemKeys,
                 isLoading = uiState.isLoading,
-                headerExtra =
-                    if (selectedFilter == null || selectedFilter == LibraryFilter.PLAYLISTS) {
-                        { SpotifyImportCard(onClick = onNavigateToSpotifyImport) }
-                    } else {
-                        null
-                    },
                 error = uiState.error,
                 onRetry = { viewModel.refresh() },
                 isGridView = isGridView,
@@ -565,6 +559,14 @@ fun LibraryScreen(
                 bottomPadding = miniPlayerInset,
                 extraBottomPadding = 0.dp,
                 scrollState = activeLibraryGridState,
+                headerBanner = {
+                    SpotifyImportBanner(
+                        onClick = {
+                            SpotifyImportLaunchRequest.request()
+                            onNavigateToPlaylistImport()
+                        },
+                    )
+                },
             )
         }
     }
@@ -754,13 +756,6 @@ fun LibraryScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        if (!LocalIsTv.current) {
-            StatusBarBanner(
-                scrollFraction = {
-                    if (activeLibraryGridState.firstVisibleItemIndex > 0) 1f else activeLibraryGridState.firstVisibleItemScrollOffset / 600f
-                },
-            )
-        }
         if (LocalIsTv.current) {
             Box(Modifier.fillMaxSize()) { content() }
         } else {
@@ -806,20 +801,30 @@ fun LibraryScreen(
             ) {
                 DropdownMenuGroup(shapes = MenuDefaults.groupShape(0, 1)) {
                     DropdownMenuItem(
-                        modifier = Modifier.tvFocusHighlight(groupedMenuItemShapes(0, 2).shape).navigationPopupSource(),
+                        modifier = Modifier.tvFocusHighlight(groupedMenuItemShapes(0, 3).shape).navigationPopupSource(),
                         text = { Text(stringResource(Res.string.create_playlist)) },
-                        shape = groupedMenuItemShapes(0, 2).shape,
+                        shape = groupedMenuItemShapes(0, 3).shape,
                         onClick = {
                             showNewPlaylistMenu = false
                             showCreateDialog = true
                         },
                     )
                     DropdownMenuItem(
-                        modifier = Modifier.tvFocusHighlight(groupedMenuItemShapes(1, 2).shape),
+                        modifier = Modifier.tvFocusHighlight(groupedMenuItemShapes(1, 3).shape),
                         text = { Text(stringResource(Res.string.import_playlist)) },
-                        shape = groupedMenuItemShapes(1, 2).shape,
+                        shape = groupedMenuItemShapes(1, 3).shape,
                         onClick = {
                             showNewPlaylistMenu = false
+                            onNavigateToPlaylistImport()
+                        },
+                    )
+                    DropdownMenuItem(
+                        modifier = Modifier.tvFocusHighlight(groupedMenuItemShapes(2, 3).shape),
+                        text = { Text(stringResource(Res.string.import_from_spotify)) },
+                        shape = groupedMenuItemShapes(2, 3).shape,
+                        onClick = {
+                            showNewPlaylistMenu = false
+                            SpotifyImportLaunchRequest.request()
                             onNavigateToPlaylistImport()
                         },
                     )

@@ -256,7 +256,7 @@
     <string name="about">O aplikaci</string>
     <string name="credits_android_lead">Hlavní Android vývojář</string>
     <string name="credits_desktop_lead">Hlavní vývojář desktopové verze</string>
-    <string name="credits_creator">Tvůrce Metrolistu</string>
+    <string name="credits_creator">Tvůrce SUKIZYu</string>
     <string name="credits_android_developer">Vývojář pro Android</string>
     <string name="credits_desktop_developer">Vývojář desktopové verze</string>
     <string name="credits_macos_developer">Vývojář pro macOS</string>
@@ -312,7 +312,7 @@
     <string name="settings_application_about">Aplikace &amp; O aplikaci</string>
     <string name="settings_open_supported_links_title">Otevřít podporované odkazy</string>
     <string name="settings_updates_title">Aktualizace</string>
-    <string name="settings_updates_available_description">Nová aktualizace Metrolistu je dostupná</string>
+    <string name="settings_updates_available_description">Nová aktualizace SUKIZYu je dostupná</string>
     <string name="settings_about_title">O aplikaci SUKIZY</string>
     <string name="settings_search_placeholder">Prohledávat nastavení</string>
     <string name="settings_search_no_results">Nenalezena žádná nastavení</string>
@@ -462,7 +462,7 @@
     <string name="backup_restore_title">Záloha a obnovení</string>
     <string name="spotify_sign_in">Přihlásit se do Spotify</string>
     <string name="spotify_sign_in_again">Přihlásit se znovu</string>
-    <string name="spotify_choose_playlists_supporting">Vybrat playlisty, které chceš přenést do Metrolistu.</string>
+    <string name="spotify_choose_playlists_supporting">Vybrat playlisty, které chceš přenést do SUKIZYu.</string>
     <plurals name="spotify_selected_playlist_count">
         <item quantity="one">%1$d playlist vybrán</item>
         <item quantity="few">%1$d playlisty vybrány</item>
@@ -501,7 +501,7 @@
     <string name="backup_restore_busy">Zpracovávání…</string>
     <string name="backup_sensitive_title">Citlivá záloha</string>
     <string name="backup_sensitive_message">Zálohy obsahují tvoje API klíče, přihlašovací údaje, ověřovací cookies, relační tokeny a další citlivé informace. Kdokoliv s tímto souborem bude mít přístup k tvým účtům. Ulož ho bezpečně a nikdy ho nesdílej.</string>
-    <string name="restore_in_progress">Obnovování tvé zálohy...\nMetrolist se automaticky restartuje.</string>
+    <string name="restore_in_progress">Obnovování tvé zálohy...\nSUKIZY se automaticky restartuje.</string>
     <string name="scrobble_tap_to_disconnect">Klepni pro odpojení</string>
     <string name="scrobble_enable">Povolit scrobbling</string>
     <string name="scrobble_now_playing">Aktualizace Právě Přehrávané</string>
@@ -599,7 +599,7 @@
     <string name="updates_changelogs">Seznam změn</string>
     <string name="updates_last_check">Poslední úspěšná kontrola aktualizací</string>
     <string name="updates_pending_title">Čekající aktualizace</string>
-    <string name="updates_version">Verze Metrolistu</string>
+    <string name="updates_version">Verze SUKIZYu</string>
     <string name="updates_size">Velikost aktualizace</string>
     <string name="updates_date">Datum</string>
     <string name="updates_changelog">Seznam změn</string>
@@ -619,7 +619,7 @@
     <string name="updates_digest_failed">Stažená aktualizace neodpovídá kontrolnímu součtu z GitHubu.</string>
     <string name="updates_installer_failed">Instalátor balíčků Android není k dispozici nebo je instalace aplikací na tomto zařízení omezena.</string>
     <string name="updates_release_unavailable">Tato verze neobsahuje kompatibilní balíček APK.</string>
-    <string name="updates_release_notes_title">Co je nového v Metrolistu %1$s</string>
+    <string name="updates_release_notes_title">Co je nového v SUKIZYu %1$s</string>
     <string name="device_connect_title">Připojení zařízení</string>
     <string name="device_connect_beta">Beta</string>
     <string name="device_connect_enable">Povolit</string>
@@ -1163,7 +1163,7 @@
     <string name="play_pause">Přehrát/Pozastavit</string>
     <string name="next">Další</string>
     <string name="not_playing">Nehraje žádná skladba</string>
-    <string name="tap_to_play">Klepni pro otevření Metrolistu</string>
+    <string name="tap_to_play">Klepni pro otevření SUKIZYu</string>
     <string name="widget_description">Widget přehrávače hudby s kontrolou přehrávaní</string>
     <string name="turntable_widget_description">Widget kulatého obalu skladby s kontrolou přehrávaní</string>
     <string name="widget_music_player">Hudební přehrávač</string>
@@ -1237,9 +1237,9 @@
     <string name="upload_failed">Nahrávání selhalo</string>
     <string name="onboarding_welcome_description">Nastavit soukromí a oprávnění systému před prvním poslechem.</string>
     <string name="onboarding_migration_title">Tvoje knihovna v13 je zde</string>
-    <string name="onboarding_migration_description">Našli jsme samostatnou databázi Metrolistu. Migrujte playlisty, historii, oblíbené skladby a data knihovny. Původní data zůstanou obnovitelná, pokud migrace selže.</string>
+    <string name="onboarding_migration_description">Našli jsme samostatnou databázi SUKIZYu. Migrujte playlisty, historii, oblíbené skladby a data knihovny. Původní data zůstanou obnovitelná, pokud migrace selže.</string>
     <string name="onboarding_migration_complete_title">Tvůj účet byl přenesen</string>
-    <string name="onboarding_migration_complete_description">Tvůj účet, playlisty, historie, oblíbené a data knihovny jsou připraveny v této verzi Metrolistu.</string>
+    <string name="onboarding_migration_complete_description">Tvůj účet, playlisty, historie, oblíbené a data knihovny jsou připraveny v této verzi SUKIZYu.</string>
     <string name="onboarding_crash_reports_title">Pomož vylepšit SUKIZY</string>
     <string name="onboarding_crash_reports_description">Sdílet volitelnou diagnostiku přes Sentry, abychom mohli najít a opravit chyby rychleji. Tuto volbu můžete kdykoli změnit v nastavení.</string>
     <string name="onboarding_notifications_title">Povolit notifikace</string>
@@ -1553,10 +1553,10 @@
     <string name="restore_backup_confirm">Obnovit zálohu?</string>
     <string name="restore">Obnovit</string>
     <string name="ai_translation">AI překlad</string>
-    <string name="restoring_backup">Obnovování tvé zálohy...\nMetrolist se automaticky restartuje.</string>
+    <string name="restoring_backup">Obnovování tvé zálohy...\nSUKIZY se automaticky restartuje.</string>
     <string name="downloading_percent">Stahování... %1$d%2$s</string>
     <string name="hide_queue">Skrýt frontu</string>
-    <string name="restore_backup_desc">Importovat Android nebo desktop zálohu Metrolistu a restartovat</string>
+    <string name="restore_backup_desc">Importovat Android nebo desktop zálohu SUKIZYu a restartovat</string>
     <string name="delete_playlist_confirm">Smazat playlist?</string>
     <string name="join_room">Připojit se k místnosti</string>
     <string name="hide_lyrics">Skrýt text skladby</string>
@@ -1989,7 +1989,7 @@
     <string name="no_match_found">Nebyly nalezeny žádné výsledky</string>
     <string name="recognition_error">Chyba rozpoznávání</string>
     <string name="try_again">Zkusit znova</string>
-    <string name="play_on_app">Přehrát na Metrolistu</string>
+    <string name="play_on_app">Přehrát na SUKIZYu</string>
     <string name="re_listen">Poslechnout znovu</string>
     <string name="stands_with_palestine">Tento projekt podporuje Palestinu</string>
     <string name="mini_player_subscribe_artist">Odebírat umělce</string>

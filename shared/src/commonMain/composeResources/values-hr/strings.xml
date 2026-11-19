@@ -245,7 +245,7 @@
     <string name="preview">Pregled</string>
     <string name="about">Informacije</string>
     <string name="settings_content_title">Sadržaj</string>
-    <string name="settings_about_title">O Metrolistu</string>
+    <string name="settings_about_title">O SUKIZYu</string>
     <string name="settings_search_placeholder">Pretraži postavke</string>
     <string name="settings_search_no_results">Nema rezultata</string>
     <string name="settings_search_no_results_desc">Nema rezultata za %1$s</string>
@@ -571,7 +571,7 @@
     <string name="onboarding_settings_hint">Otvorite Postavke iz izbornika u gornjem desnom kutu kako biste prilagodili SUKIZY.</string>
     <string name="onboarding_no_saved_accounts">Nisu pronađeni povezani računi.</string>
     <string name="onboarding_account_picture">Profilna slika korisnika %1$s</string>
-    <string name="onboarding_backup_picker_title">Vrati sigurnosnu kopiju Metrolista</string>
+    <string name="onboarding_backup_picker_title">Vrati sigurnosnu kopiju SUKIZYa</string>
     <string name="onboarding_backup_picker_error">Nije moguće otvoriti birač sigurnosne kopije: %1$s</string>
     <string name="onboarding_backup_restore_failed">Vraćanje nije uspjelo: %1$s</string>
     <string name="new_badge">Novo</string>

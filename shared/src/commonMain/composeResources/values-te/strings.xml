@@ -828,7 +828,7 @@
     <string name="foreign_import_unsupported">ఈ ఫైల్ మద్దతు ఉన్న పాట యాప్ నుండి బ్యాకప్ కాదు</string>
     <string name="foreign_import_failed">దిగుమతి అవ్వలేకపోయింది : %1$s</string>
     <string name="backup_sensitive_title">రహస్యమైన బ్యాకప్</string>
-    <string name="restore_in_progress">మీ బ్యాకప్ పునరుద్ధరిస్తున్నాము…\nMetrolist స్వయంచాలకంగా పునఃప్రారంభిస్తుంది.</string>
+    <string name="restore_in_progress">మీ బ్యాకప్ పునరుద్ధరిస్తున్నాము…\nSUKIZY స్వయంచాలకంగా పునఃప్రారంభిస్తుంది.</string>
     <string name="scrobble_tap_to_disconnect">జోడి తొలగించడానికి నొక్కండి</string>
     <string name="scrobble_enable">స్క్రోబ్లింగ్ (Scrobbling) మోదల పేట్టండి</string>
     <string name="scrobble_connecting">అనుసంధానిస్తోంది…</string>

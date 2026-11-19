@@ -473,7 +473,7 @@
     <string name="backup_restore_busy">Kiya jaa raha…</string>
     <string name="backup_sensitive_title">Samwedansheel backup</string>
     <string name="backup_sensitive_message">Backup me aapke API chabhiya, authentication cookies, session tokens, aur anya samwedansheel jaankariya hai. File jiske pas hogi wo aapke account tak pohonch sakte hain. Ise SURAKSHIT ROOP se rakhe aur kabhi SAJHA NA KARE.</string>
-    <string name="restore_in_progress">Backup vapas liya jaa raha hai…\nMetrolist apne aap fir se shuru hoga.</string>
+    <string name="restore_in_progress">Backup vapas liya jaa raha hai…\nSUKIZY apne aap fir se shuru hoga.</string>
     <string name="scrobble_tap_to_disconnect">Jod hatane ke liye dabaye</string>
     <string name="scrobble_enable">Sunne ka record shuru kare</string>
     <string name="scrobble_now_playing">Ab badlaw chalaye jaa rahe</string>

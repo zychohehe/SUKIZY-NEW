@@ -472,7 +472,7 @@
     <string name="backup_restore_busy">काम चल रहा है…</string>
     <string name="backup_sensitive_title">संवेदनशील बैकअप</string>
     <string name="backup_sensitive_message">बैकअप में आपके API keys, अकाउंट क्रेडेंशियल, ऑथेंटिकेशन कुकीज़, सेशन टोकन और अन्य संवेदनशील जानकारी होती है। इस फ़ाइल के पास वाला कोई भी व्यक्ति आपके अकाउंट्स तक पहुँच सकता है। इसे सुरक्षित रूप से रखें और कभी साझा न करें।</string>
-    <string name="restore_in_progress">आपका बैकअप पुनर्स्थापित किया जा रहा है…\nMetrolist स्वतः रीस्टार्ट हो जाएगा।</string>
+    <string name="restore_in_progress">आपका बैकअप पुनर्स्थापित किया जा रहा है…\nSUKIZY स्वतः रीस्टार्ट हो जाएगा।</string>
     <string name="scrobble_tap_to_disconnect">डिसकनेक्ट करने के लिए टैप करें</string>
     <string name="scrobble_enable">स्क्रॉबलिंग सक्षम करें</string>
     <string name="scrobble_now_playing">अभी चल रहा है अपडेट</string>

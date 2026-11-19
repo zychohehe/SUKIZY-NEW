@@ -22,13 +22,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -36,66 +36,66 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.metrolist.shared.generated.resources.Res
 import com.metrolist.shared.generated.resources.see_all
 import com.metrolist.shared.ui.components.images.AsyncImage
 import com.metrolist.shared.ui.icons.MetrolistIcons
 import com.metrolist.shared.ui.utils.artistArtworkShape
 import org.jetbrains.compose.resources.stringResource
-import kotlin.math.absoluteValue
+
+private val GenreGradients =
+    listOf(
+        Color(0xFF7F5AF0) to Color(0xFF2CB1BC),
+        Color(0xFFFF6B6B) to Color(0xFFFFA45B),
+        Color(0xFF11998E) to Color(0xFF38EF7D),
+        Color(0xFF396AFC) to Color(0xFF2948FF),
+        Color(0xFFEE0979) to Color(0xFFFF6A00),
+        Color(0xFF8E2DE2) to Color(0xFF4A00E0),
+        Color(0xFF00B4DB) to Color(0xFF0083B0),
+        Color(0xFFF953C6) to Color(0xFFB91D73),
+        Color(0xFFF7971E) to Color(0xFFFFD200),
+        Color(0xFF134E5E) to Color(0xFF71B280),
+    )
 
 @Composable
 fun GenreCard(
     title: String,
     onClick: () -> Unit,
-    shape: Shape,
     modifier: Modifier = Modifier,
+    shape: Shape = RoundedCornerShape(16.dp),
 ) {
-    val base = MaterialTheme.colorScheme.secondaryContainer
-    // Stable per-title hue so every genre keeps its own colour across recompositions and sessions.
-    val accent =
-        remember(title) {
-            Color.hsv(hue = (title.hashCode().toLong().absoluteValue % 360).toFloat(), saturation = 0.55f, value = 0.9f)
-        }
+    // A stable color per genre so the same genre looks the same on every screen.
+    val (start, end) = GenreGradients[(title.hashCode() and Int.MAX_VALUE) % GenreGradients.size]
     Surface(
         onClick = onClick,
         modifier = modifier.height(56.dp),
         shape = shape,
-        color = base,
-        tonalElevation = 1.dp,
+        color = Color.Transparent,
     ) {
         Box(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .background(
-                        Brush.horizontalGradient(
-                            listOf(accent.copy(alpha = 0.34f).compositeOver(base), base),
-                        ),
-                    ),
+                    .background(Brush.linearGradient(listOf(start, end)))
+                    .drawBehind {
+                        drawCircle(
+                            color = Color.White.copy(alpha = 0.14f),
+                            radius = size.height * 0.9f,
+                            center = Offset(size.width * 0.95f, size.height * 0.1f),
+                        )
+                    },
             contentAlignment = Alignment.CenterStart,
         ) {
-            Row(
-                modifier = Modifier.padding(start = 12.dp, end = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(
-                    modifier =
-                        Modifier
-                            .width(4.dp)
-                            .height(22.dp)
-                            .clip(RoundedCornerShape(2.dp))
-                            .background(accent),
-                )
-                Spacer(Modifier.width(10.dp))
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
+            Text(
+                text = title,
+                modifier = Modifier.padding(horizontal = 14.dp),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }
@@ -117,8 +117,10 @@ fun SectionTitle(
     onShuffleClick: (() -> Unit)? = null,
     isWide: Boolean = false,
 ) {
-    val titleStyle = if (isWide) MaterialTheme.typography.headlineMediumEmphasized else MaterialTheme.typography.headlineSmallEmphasized
-    val rowHeight = if (isWide || label != null) 60.dp else 50.dp
+    val titleStyle =
+        (if (isWide) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.titleLarge)
+            .copy(fontWeight = FontWeight.Bold, letterSpacing = (-0.3).sp)
+    val rowHeight = if (isWide || label != null) 56.dp else 44.dp
 
     Row(
         modifier =
@@ -127,7 +129,7 @@ fun SectionTitle(
                 .heightIn(min = rowHeight)
                 .then(
                     if (onClick != null) {
-                        Modifier.clip(RoundedCornerShape(12.dp)).clickable(
+                        Modifier.clip(RoundedCornerShape(14.dp)).clickable(
                             role = Role.Button,
                             onClickLabel = seeAllLabel ?: stringResource(Res.string.see_all),
                             onClick = onClick,
@@ -157,11 +159,11 @@ fun SectionTitle(
             if (label != null) {
                 Text(
                     text = label,
-                    style = MaterialTheme.typography.titleSmall,
+                    style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Medium,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
 
@@ -170,7 +172,7 @@ fun SectionTitle(
                 style = titleStyle,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
-                color = MaterialTheme.colorScheme.primary,
+                color = MaterialTheme.colorScheme.onSurface,
             )
         }
 
@@ -217,9 +219,9 @@ private fun SectionActionButton(
     onClick: (() -> Unit)? = null,
     isWide: Boolean = false,
 ) {
-    val boxSize = if (isWide) 56.dp else 48.dp
-    val surfaceSize = Modifier.size(40.dp, 32.dp)
-    val iconSize = 20.dp
+    val boxSize = if (isWide) 48.dp else 44.dp
+    val surfaceSize = Modifier.size(36.dp, 28.dp)
+    val iconSize = 18.dp
 
     Box(
         modifier = Modifier.size(boxSize),
@@ -230,7 +232,7 @@ private fun SectionActionButton(
                 Icon(
                     imageVector = icon,
                     contentDescription = contentDescription,
-                    tint = MaterialTheme.colorScheme.onPrimary,
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(iconSize),
                 )
             }
@@ -239,7 +241,7 @@ private fun SectionActionButton(
             Surface(
                 modifier = surfaceSize,
                 shape = RoundedCornerShape(100.dp),
-                color = MaterialTheme.colorScheme.primary,
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
                 onClick = onClick,
                 content = content,
             )
@@ -247,7 +249,7 @@ private fun SectionActionButton(
             Surface(
                 modifier = surfaceSize,
                 shape = RoundedCornerShape(100.dp),
-                color = MaterialTheme.colorScheme.primary,
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
                 content = content,
             )
         }

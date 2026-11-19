@@ -501,7 +501,7 @@
     <string name="backup_restore_busy">Przetwarzanie…</string>
     <string name="backup_sensitive_title">Wrażliwa kopia zapasowa</string>
     <string name="backup_sensitive_message">Kopie zapasowe zawierają Twoje klucze API, dane logowania do kont, pliki cookie uwierzytelniania, tokeny sesji i inne poufne informacje. Każdy, kto ma ten plik, może uzyskać dostęp do Twoich kont. Przechowuj go w bezpiecznym miejscu i nigdy go nie udostępniaj.</string>
-    <string name="restore_in_progress">Przywracanie kopii zapasowej…\nMetrolist uruchomi się ponownie automatycznie.</string>
+    <string name="restore_in_progress">Przywracanie kopii zapasowej…\nSUKIZY uruchomi się ponownie automatycznie.</string>
     <string name="scrobble_tap_to_disconnect">Stuknij, aby rozłączyć</string>
     <string name="scrobble_enable">Scrobblowanie</string>
     <string name="scrobble_now_playing">Aktualizacje statusu Teraz odtwarzane</string>
@@ -1479,7 +1479,7 @@
     <string name="sensitive_backup">Wrażliwa kopia zapasowa</string>
     <string name="restore_backup_confirm">Przywrócić kopię zapasową?</string>
     <string name="restore">Przywróć</string>
-    <string name="restoring_backup">Przywracanie kopii zapasowej…\nMetrolist uruchomi się ponownie automatycznie.</string>
+    <string name="restoring_backup">Przywracanie kopii zapasowej…\nSUKIZY uruchomi się ponownie automatycznie.</string>
     <string name="hidden_items_count">Ukryte elementy (%1$d)</string>
     <string name="hidden_library_items">Ukryte elementy biblioteki</string>
     <string name="delete_playlist_confirm">Usunąć playlistę?</string>

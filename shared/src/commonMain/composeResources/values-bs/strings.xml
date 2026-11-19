@@ -420,7 +420,7 @@
     <string name="onboarding_settings_hint">Otvorite Podešavanja iz menija u gornjem desnom uglu da biste prilagodili SUKIZY.</string>
     <string name="onboarding_no_saved_accounts">Nisu pronađeni povezani računi.</string>
     <string name="onboarding_account_picture">Profilna slika korisnika %1$s</string>
-    <string name="onboarding_backup_picker_title">Vrati sigurnosnu kopiju Metrolista</string>
+    <string name="onboarding_backup_picker_title">Vrati sigurnosnu kopiju SUKIZYa</string>
     <string name="onboarding_backup_picker_error">Nije moguće otvoriti birač sigurnosne kopije: %1$s</string>
     <string name="onboarding_backup_restore_failed">Vraćanje nije uspjelo: %1$s</string>
     <string name="new_badge">Novo</string>

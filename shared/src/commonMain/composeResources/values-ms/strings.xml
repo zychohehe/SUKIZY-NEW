@@ -441,7 +441,7 @@
     <string name="backup_restore_busy">Sedang diproses…</string>
     <string name="backup_sensitive_title">Sandaran sensitif</string>
     <string name="backup_sensitive_message">Fail sandaran mengandungi kunci API, kelayakan akaun, kuki pengesahan, token sesi dan maklumat sensitif anda yang lain. Sesiapa sahaja yang memiliki fail ini PASTI boleh mengakses akaun anda. Simpan fail tersebut dengan selamat dan JANGAN SEKALI-KALI MENGKONGSIKANNYA.</string>
-    <string name="restore_in_progress">Memulihkan sandaran anda…\nMetrolist akan dimulakan semula secara automatik.</string>
+    <string name="restore_in_progress">Memulihkan sandaran anda…\nSUKIZY akan dimulakan semula secara automatik.</string>
     <string name="scrobble_tap_to_disconnect">Ketik untuk memutuskan sambungan</string>
     <string name="scrobble_enable">Aktifkan scrobbling</string>
     <string name="scrobble_now_playing">Kemas kini sedang dimainkan</string>

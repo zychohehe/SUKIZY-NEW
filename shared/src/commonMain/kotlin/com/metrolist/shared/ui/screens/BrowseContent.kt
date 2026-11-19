@@ -289,27 +289,19 @@ fun BrowseContent(
                                     key = { _, items -> "section_${sectionIndex}_categories_${canonicalHomeItemId(items.first())}" },
                                     span = { _, _ -> GridItemSpan(maxLineSpan) },
                                     contentType = { _, _ -> "category_row" },
-                                ) { row, items ->
+                                ) { _, items ->
                                     Row(
                                         Modifier
                                             .fillMaxWidth()
                                             .padding(
                                                 horizontal = if (categoriesOnly) 6.dp else 22.dp,
-                                            ).padding(bottom = if (isDesktop) 0.dp else 3.dp),
-                                        horizontalArrangement = Arrangement.spacedBy(if (isDesktop) GridTileSpacing else 3.dp),
+                                            ).padding(bottom = if (isDesktop) 0.dp else 8.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(if (isDesktop) GridTileSpacing else 8.dp),
                                     ) {
-                                        items.forEachIndexed { column, item ->
-                                            val lastRow = row == categoryRows.lastIndex
+                                        items.forEach { item ->
                                             GenreCard(
                                                 title = item.title,
                                                 onClick = { onItemClick(item, songs) },
-                                                shape =
-                                                    RoundedCornerShape(
-                                                        topStart = if (row == 0 && column == 0) 12.dp else 5.dp,
-                                                        topEnd = if (row == 0 && column == items.lastIndex) 12.dp else 5.dp,
-                                                        bottomStart = if (lastRow && column == 0) 12.dp else 5.dp,
-                                                        bottomEnd = if (lastRow && column == items.lastIndex) 12.dp else 5.dp,
-                                                    ),
                                                 modifier = Modifier.weight(1f),
                                             )
                                         }
