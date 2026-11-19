@@ -109,6 +109,7 @@ import com.metrolist.shared.ui.components.ChipShelf
 import com.metrolist.shared.ui.components.HomeLoadingPlaceholder
 import com.metrolist.shared.ui.components.PopupVisibility
 import com.metrolist.shared.ui.components.RefreshIndicator
+import com.metrolist.shared.ui.components.StatusBarBanner
 import com.metrolist.shared.ui.icons.MetrolistIcons
 import com.metrolist.shared.ui.navigation.LocalRootContentActive
 import com.metrolist.shared.ui.screens.HomeContent
@@ -366,29 +367,10 @@ fun HomeScreen(
     ) {
         if (!isTv) {
             // Soft colour banner behind the status bar; fades out as the feed scrolls up.
-            val bannerHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 200.dp
-            val accent = MaterialTheme.colorScheme.primary
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .height(bannerHeight)
-                        .graphicsLayer {
-                            alpha =
-                                if (listState.firstVisibleItemIndex > 0) {
-                                    0f
-                                } else {
-                                    (1f - listState.firstVisibleItemScrollOffset / bannerHeight.toPx()).coerceIn(0f, 1f)
-                                }
-                        }.background(
-                            Brush.verticalGradient(
-                                listOf(
-                                    accent.copy(alpha = 0.34f),
-                                    accent.copy(alpha = 0.12f),
-                                    Color.Transparent,
-                                ),
-                            ),
-                        ),
+            StatusBarBanner(
+                scrollFraction = {
+                    if (listState.firstVisibleItemIndex > 0) 1f else listState.firstVisibleItemScrollOffset / 600f
+                },
             )
         }
         if (enablePullToRefresh) {

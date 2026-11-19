@@ -138,6 +138,7 @@ import com.metrolist.shared.ui.components.LibraryItemContainer
 import com.metrolist.shared.ui.components.PopupVisibility
 import com.metrolist.shared.ui.components.RefreshIndicator
 import com.metrolist.shared.ui.components.SpotifyImportCard
+import com.metrolist.shared.ui.components.StatusBarBanner
 import com.metrolist.shared.ui.components.ScrollingAddButton
 import com.metrolist.shared.ui.components.rememberScrollingFabState
 import com.metrolist.shared.ui.icons.MetrolistIcons
@@ -753,6 +754,13 @@ fun LibraryScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
+        if (!LocalIsTv.current) {
+            StatusBarBanner(
+                scrollFraction = {
+                    if (activeLibraryGridState.firstVisibleItemIndex > 0) 1f else activeLibraryGridState.firstVisibleItemScrollOffset / 600f
+                },
+            )
+        }
         if (LocalIsTv.current) {
             Box(Modifier.fillMaxSize()) { content() }
         } else {
