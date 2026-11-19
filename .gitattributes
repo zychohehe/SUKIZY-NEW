@@ -1,2 +1,4 @@
-# Preserve bundled upstream license text verbatim.
-shared/src/commonMain/composeResources/files/licenses/glyphmind/** -whitespace
+# GitHub Linguist overrides
+# Ignore developer utility scripts from repository language statistics
+scripts/* linguist-documentation
+scripts/** linguist-documentation

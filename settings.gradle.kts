@@ -1,66 +1,41 @@
-@file:Suppress("UnstableApiUsage")
-
-val useLocalInnerTubeX = providers.gradleProperty("useLocalInnerTubeX").isPresent
-val useMavenLocalInnerTubeX = providers.gradleProperty("useMavenLocalInnerTubeX").isPresent
-if (useLocalInnerTubeX && useMavenLocalInnerTubeX) {
-    error("-PuseLocalInnerTubeX and -PuseMavenLocalInnerTubeX are mutually exclusive")
-}
-
 pluginManagement {
     repositories {
-        google()
-        mavenCentral()
-        gradlePluginPortal()
-        maven { setUrl("https://maven.aliyun.com/repository/public") }
-    }
-}
-plugins {
-    id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
-    id("com.gradle.develocity") version "4.6.1"
-}
-
-develocity {
-    buildScan {
-        termsOfUseUrl = "https://gradle.com/terms-of-service"
-        termsOfUseAgree = "yes"
-        publishing.onlyIf { System.getenv("CI") != null }
-    }
-}
-
-dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-
-    repositories {
-        if (useMavenLocalInnerTubeX) mavenLocal()
-        google()
-        mavenCentral()
-        maven {
-            setUrl("https://jitpack.io")
+        google {
             content {
-                includeGroup("com.github.nyxiereal.glyphmind")
-                includeGroup("com.github.MetrolistGroup.innertubex")
-                includeGroup("com.github.MetrolistGroup.quackjs")
+                includeGroupByRegex("com\\.android.*")
+                includeGroupByRegex("com\\.google.*")
+                includeGroupByRegex("androidx.*")
             }
         }
-        maven { setUrl("https://maven.aliyun.com/repository/public") }
-        maven("https://jogamp.org/deployment/maven")
-        maven {
-            name = "FDD Maven"
-            url = uri("https://maven.firstdark.dev/releases")
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        google()
+        mavenCentral()
+        maven { url = uri("https://jitpack.io") }
+        // TinyPinyin (lyrics romanization) only survives on this JCenter mirror; it may serve
+        // nothing else, so no other dependency can ever resolve from it.
+        exclusiveContent {
+            forRepository { maven { url = uri("https://maven.aliyun.com/repository/public") } }
+            filter { includeModule("com.github.promeg", "tinypinyin") }
         }
     }
 }
 
-rootProject.name = "Metrolist"
-if (useLocalInnerTubeX) {
-    includeBuild("../innertubex") {
-        dependencySubstitution {
-            substitute(module("com.github.MetrolistGroup.innertubex:innertubex")).using(project(":"))
-        }
-    }
-}
+rootProject.name = "Auralis"
+// The Gradle build lives at the repo root so the Android, Windows (and later Mac) apps and the
+// shared code can sit side by side. Modules keep their old paths for now.
+include(":app")
+project(":app").projectDir = file("android/app")
+include(":zemer-cipher")
+project(":zemer-cipher").projectDir = file("zemer-cipher")
 include(":shared")
-include(":listenTogetherProto")
-include(":opusDecoder")
-include(":androidApp")
-include(":desktopApp")
+include(":windows")
+// The Windows app's own copy of the core code; the Android app builds only from :shared.
+include(":windows-core")
+project(":windows-core").projectDir = file("windows/core")
+include(":discord-bot")

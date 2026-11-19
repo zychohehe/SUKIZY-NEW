@@ -1,0 +1,453 @@
+// Behaviour tests for lyrics title cleaning, candidate matching, and rendition
+// detection.
+//
+// Run with:  node scripts/test-lyrics-matching.mjs
+//
+// Imports src/services/lyrics.ts directly; Node strips the type annotations
+// (built in from Node 22.18 / 23.6 onward), safe because tsconfig sets
+// "erasableSyntaxOnly". The assertions run against the exact functions the app
+// uses to pick and label lyrics — nothing is re-implemented here. Only the pure
+// functions are exercised; fetchLyrics (which does network I/O) is never called.
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const modulePath = path.join(repoRoot, 'src', 'services', 'lyrics.ts');
+
+let mod;
+try {
+  mod = await import(pathToFileURL(modulePath).href);
+} catch (err) {
+  const [major, minor] = process.versions.node.split('.').map(Number);
+  const canStripTypes = major > 22 || (major === 22 && minor >= 18);
+  if (!canStripTypes) {
+    console.error(
+      `This test loads a .ts module directly, which needs Node 22.18+ (running ${process.versions.node}).`,
+    );
+  }
+  throw err;
+}
+
+const {
+  cleanTitle,
+  normalizeForMatch,
+  tokenSimilarity,
+  isRelatedMatch,
+  detectRendition,
+  parseLrc,
+  isRecordLabelOrUploader,
+  resolveCanonicalMetadata,
+} = mod;
+
+// ---------------------------------------------------------------------------
+// cleanTitle
+// ---------------------------------------------------------------------------
+
+test('cleanTitle keeps interior hyphens that are part of the real name', () => {
+  // The whole point of the rewrite: a hyphen inside a name must survive.
+  assert.equal(cleanTitle('Jay-Z'), 'Jay-Z');
+  assert.equal(cleanTitle('twenty-one pilots'), 'twenty-one pilots');
+  assert.equal(cleanTitle('Spider-Man Theme'), 'Spider-Man Theme');
+  assert.equal(cleanTitle('Sk8er Boi'), 'Sk8er Boi');
+  // A pipe that is genuinely part of nothing trailing-recognised is left alone
+  // rather than truncating the title.
+  assert.equal(cleanTitle('Song A | Song B'), 'Song A | Song B');
+});
+
+test('cleanTitle strips bracketed annotations and feat credits', () => {
+  assert.equal(cleanTitle('Blinding Lights (Official Video)'), 'Blinding Lights');
+  assert.equal(cleanTitle('Levitating [4K]'), 'Levitating');
+  assert.equal(cleanTitle('Song (feat. Someone)'), 'Song');
+  assert.equal(cleanTitle('Song feat. Someone Else'), 'Song');
+  assert.equal(cleanTitle('Song ft. X'), 'Song');
+  assert.equal(cleanTitle('Track featuring Guest'), 'Track');
+});
+
+test('cleanTitle strips only a KNOWN trailing qualifier after a separator', () => {
+  assert.equal(cleanTitle('Bohemian Rhapsody - Remastered 2011'), 'Bohemian Rhapsody');
+  assert.equal(cleanTitle('Song - Official Music Video'), 'Song');
+  assert.equal(cleanTitle('Song | Lyrics'), 'Song');
+  assert.equal(cleanTitle('Song - Radio Edit'), 'Song');
+  // Stacked trailing tags are peeled one after another.
+  assert.equal(cleanTitle('Song - Remastered - Official Video'), 'Song');
+  // A trailing segment that is NOT a recognised qualifier stays put.
+  assert.equal(cleanTitle('Song - My Favourite Part'), 'Song - My Favourite Part');
+});
+
+test('cleanTitle removes fan-rip descriptors used for query building', () => {
+  assert.equal(cleanTitle('Blinding Lights (sped up)'), 'Blinding Lights');
+  assert.equal(cleanTitle('Heat Waves - slowed + reverb'), 'Heat Waves');
+  assert.equal(cleanTitle('Some Song (Nightcore)'), 'Some Song');
+  assert.equal(cleanTitle('Track (Bass Boosted)'), 'Track');
+});
+
+test('cleanTitle is safe on empty / whitespace input', () => {
+  assert.equal(cleanTitle(''), '');
+  assert.equal(cleanTitle('   '), '');
+  assert.equal(cleanTitle(undefined), '');
+});
+
+// ---------------------------------------------------------------------------
+// normalizeForMatch + tokenSimilarity
+// ---------------------------------------------------------------------------
+
+test('normalizeForMatch folds case, accents and punctuation', () => {
+  assert.equal(normalizeForMatch('Beyoncé!'), 'beyonce');
+  assert.equal(normalizeForMatch('AC/DC'), 'ac dc');
+  assert.equal(normalizeForMatch('Simon & Garfunkel'), 'simon and garfunkel');
+  assert.equal(normalizeForMatch('  Multiple   Spaces  '), 'multiple spaces');
+});
+
+test('tokenSimilarity is 1 for equal, 0 for disjoint, in-between otherwise', () => {
+  assert.equal(tokenSimilarity('Blinding Lights', 'blinding lights'), 1);
+  assert.equal(tokenSimilarity('Blinding Lights', 'Levitating'), 0);
+  const partial = tokenSimilarity('Blinding Lights', 'Blinding');
+  assert.ok(partial > 0 && partial < 1, `expected partial overlap, got ${partial}`);
+  // Two empty strings are trivially equal; one empty is not.
+  assert.equal(tokenSimilarity('', ''), 1);
+  assert.equal(tokenSimilarity('Song', ''), 0);
+});
+
+// ---------------------------------------------------------------------------
+// isRelatedMatch  (rejects unrelated LRCLIB results)
+// ---------------------------------------------------------------------------
+
+test('isRelatedMatch accepts the same song even with artist-name variance', () => {
+  assert.equal(
+    isRelatedMatch('Blinding Lights', 'The Weeknd', 'Blinding Lights', 'Weeknd'),
+    true,
+  );
+  // Strong title match alone is enough (uploaders vary wildly on YouTube).
+  assert.equal(
+    isRelatedMatch('Blinding Lights', 'Some Topic Channel', 'Blinding Lights', 'The Weeknd'),
+    true,
+  );
+});
+
+test('isRelatedMatch accepts multi-artist delimiters (&, /, comma, +)', () => {
+  // Sam Smith & Kim Petras vs Sam Smith/Kim Petras
+  assert.equal(
+    isRelatedMatch(
+      'Unholy (feat. Kim Petras)',
+      'Sam Smith/Kim Petras',
+      'Unholy',
+      'Sam Smith & Kim Petras'
+    ),
+    true
+  );
+  // Candidate track with Artist - Title format
+  assert.equal(
+    isRelatedMatch(
+      'Sam Smith, Kim Petras - Unholy',
+      'SAM SMITH',
+      'Unholy',
+      'Sam Smith & Kim Petras'
+    ),
+    true
+  );
+  // Comma vs ampersand
+  assert.equal(
+    isRelatedMatch(
+      'Uptown Funk',
+      'Mark Ronson, Bruno Mars',
+      'Uptown Funk',
+      'Mark Ronson ft. Bruno Mars'
+    ),
+    true
+  );
+  // Plus sign vs &
+  assert.equal(
+    isRelatedMatch(
+      'STAY',
+      'The Kid LAROI + Justin Bieber',
+      'Stay',
+      'The Kid LAROI & Justin Bieber'
+    ),
+    true
+  );
+});
+
+test('isRelatedMatch handles embedded Artist - Title format in candidate track', () => {
+  assert.equal(
+    isRelatedMatch(
+      'The Weeknd - Blinding Lights',
+      'The Weeknd',
+      'Blinding Lights',
+      'The Weeknd'
+    ),
+    true
+  );
+  assert.equal(
+    isRelatedMatch(
+      'Foster The People - Pumped Up Kicks',
+      'Foster The People',
+      'Pumped Up Kicks',
+      'Foster the People'
+    ),
+    true
+  );
+});
+
+test('isRelatedMatch rejects a different song', () => {
+  assert.equal(
+    isRelatedMatch('Levitating', 'Dua Lipa', 'Blinding Lights', 'The Weeknd'),
+    false
+  );
+  // Same artist, wrong track must NOT match
+  assert.equal(
+    isRelatedMatch('Save Your Tears', 'The Weeknd', 'Blinding Lights', 'The Weeknd'),
+    false
+  );
+  assert.equal(
+    isRelatedMatch('Bad Guy', 'Billie Eilish', 'Happier Than Ever', 'Billie Eilish'),
+    false
+  );
+});
+
+// ---------------------------------------------------------------------------
+// detectRendition  (drives the honest synced -> plain downgrade)
+// ---------------------------------------------------------------------------
+
+test('detectRendition flags tempo-altered rips', () => {
+  assert.equal(detectRendition('Blinding Lights (sped up)').tempoAltered, true);
+  assert.equal(detectRendition('Heat Waves - slowed + reverb').tempoAltered, true);
+  assert.equal(detectRendition('Some Song [Nightcore]').tempoAltered, true);
+  assert.equal(detectRendition('Track (8D Audio)').tempoAltered, true);
+  assert.equal(detectRendition('Tune (Bass Boosted)').tempoAltered, true);
+});
+
+test('detectRendition flags alternate versions', () => {
+  assert.equal(detectRendition('Song (Live at Wembley)').alternateVersion, true);
+  assert.equal(detectRendition('Song - Acoustic').alternateVersion, true);
+  assert.equal(detectRendition('Song (Piano Version)').alternateVersion, true);
+  assert.equal(detectRendition('Song (Radiohead Cover)').alternateVersion, true);
+  assert.equal(detectRendition('Song - Remix').alternateVersion, true);
+  assert.equal(detectRendition('Song (Karaoke)').alternateVersion, true);
+});
+
+test('detectRendition leaves ordinary titles untouched', () => {
+  const plain = detectRendition('Blinding Lights');
+  assert.equal(plain.tempoAltered, false);
+  assert.equal(plain.alternateVersion, false);
+  assert.equal(plain.label, undefined);
+  // Words that merely CONTAIN a marker substring must not trip the detector.
+  assert.equal(detectRendition('Alive').alternateVersion, false);
+  assert.equal(detectRendition('Livewire').alternateVersion, false);
+  assert.equal(detectRendition('Delivery').alternateVersion, false);
+});
+
+// ---------------------------------------------------------------------------
+// parseLrc  (honest word-timing labelling)
+// ---------------------------------------------------------------------------
+
+test('parseLrc reports word timing ONLY for genuine enhanced LRC', () => {
+  const enhanced = '[00:12.00] <00:12.00>Hello <00:12.50>world';
+  const parsedEnhanced = parseLrc(enhanced);
+  assert.equal(parsedEnhanced.hasWordTiming, true);
+  assert.ok(parsedEnhanced.lines[0].words && parsedEnhanced.lines[0].words.length === 2);
+
+  const standard = '[00:12.00] Hello world\n[00:15.00] Next line';
+  const parsedStandard = parseLrc(standard);
+  assert.equal(parsedStandard.hasWordTiming, false);
+  assert.equal(parsedStandard.lines.length, 2);
+  assert.equal(parsedStandard.lines[0].words, undefined);
+});
+
+test('parseLrc sorts lines by time and marks instrumental breaks', () => {
+  const lrc = '[00:30.00] second\n[00:10.00] first\n[00:20.00] (Instrumental)';
+  const parsed = parseLrc(lrc);
+  assert.deepEqual(
+    parsed.lines.map((l) => l.text),
+    ['first', '(Instrumental)', 'second'],
+  );
+  assert.equal(parsed.lines[1].isInstrumental, true);
+});
+
+test('parseLrc returns an empty, honest result for empty input', () => {
+  assert.deepEqual(parseLrc(''), { lines: [], hasWordTiming: false });
+});
+
+// ---------------------------------------------------------------------------
+// extractTrackAndArtistPairs & Embedded Artist Matching
+// ---------------------------------------------------------------------------
+
+test('extractTrackAndArtistPairs derives clean candidate pairs from messy titles', () => {
+  const { extractTrackAndArtistPairs } = mod;
+
+  // Hyphen without space: "Tv Girl -Loving Machine"
+  const p1 = extractTrackAndArtistPairs('Tv Girl -Loving Machine', 'MusicLand');
+  assert.ok(p1.some((p) => p.track === 'Loving Machine' && p.artist === 'Tv Girl'));
+
+  // Pipe enclosure: "Loving Machine |TV Girl|"
+  const p2 = extractTrackAndArtistPairs('Loving Machine |TV Girl|', 'mono sketches');
+  assert.ok(p2.some((p) => p.track === 'Loving Machine' && p.artist === 'TV Girl'));
+
+  // VEVO Channel: "Glass Animals - Heat Waves (Official Video)"
+  const p3 = extractTrackAndArtistPairs('Glass Animals - Heat Waves (Official Video)', 'GlassAnimalsVEVO');
+  assert.ok(p3.some((p) => p.track === 'Heat Waves' && p.artist === 'Glass Animals'));
+
+  // Inverted: "TV Girl", "Loving Machine"
+  const p4 = extractTrackAndArtistPairs('TV Girl', 'Loving Machine');
+  assert.ok(p4.some((p) => p.track === 'Loving Machine' && p.artist === 'TV Girl'));
+});
+
+test('isRelatedMatch matches candidate when wantTrack embeds both title and artist', () => {
+  // Candidate from LRCLIB: track="Loving Machine", artist="TV Girl"
+  // Request from YouTube: track="Tv Girl -Loving Machine", artist="MusicLand"
+  assert.equal(
+    isRelatedMatch('Loving Machine', 'TV Girl', 'Tv Girl -Loving Machine', 'MusicLand'),
+    true
+  );
+
+  // Request with pipe: track="Loving Machine |TV Girl|", artist="mono sketches"
+  assert.equal(
+    isRelatedMatch('Loving Machine', 'TV Girl', 'Loving Machine |TV Girl|', 'mono sketches'),
+    true
+  );
+
+  // Inverted request: track="TV Girl", artist="Loving Machine"
+  assert.equal(
+    isRelatedMatch('Loving Machine', 'TV Girl', 'TV Girl', 'Loving Machine'),
+    true
+  );
+});
+
+// ---------------------------------------------------------------------------
+// cleanTitle: trailing descriptor-run stripping (YouTube upload noise)
+// ---------------------------------------------------------------------------
+
+test('cleanTitle strips a trailing descriptor run without a separator', () => {
+  // The real regression: "8K Full Video Song" appended with no "-"/"|".
+  assert.equal(cleanTitle('Aasan Nahin Yahan 8K Full Video Song'), 'Aasan Nahin Yahan');
+  assert.equal(cleanTitle('Aasan Nahin Yahan Full Video'), 'Aasan Nahin Yahan');
+  assert.equal(cleanTitle('Kesariya Full Video Song'), 'Kesariya');
+  assert.equal(cleanTitle('Some Track Official Video'), 'Some Track');
+  assert.equal(cleanTitle('Track 4K Video'), 'Track');
+});
+
+test('cleanTitle keeps a real title that merely ends in one common word', () => {
+  // A single WEAK trailing word must NOT be stripped.
+  assert.equal(cleanTitle('Love Song'), 'Love Song');
+  assert.equal(cleanTitle('Swan Song'), 'Swan Song');
+  assert.equal(cleanTitle('Video Games'), 'Video Games');
+  assert.equal(cleanTitle('Chandelier'), 'Chandelier');
+  // Never reduce a title that is ALL descriptors to empty.
+  assert.equal(cleanTitle('Official Video'), 'Official Video');
+});
+
+// ---------------------------------------------------------------------------
+// extractTrackAndArtistPairs: pipe-jukebox + duplicated-artist recovery
+// ---------------------------------------------------------------------------
+
+test('extractTrackAndArtistPairs recovers the song from a multi-pipe title', () => {
+  const { extractTrackAndArtistPairs } = mod;
+  const pairs = extractTrackAndArtistPairs('Raat ki Rani || Shakti || dl91', 'Seedhe Maut');
+  assert.ok(
+    pairs.some((p) => p.track === 'Raat ki Rani' && p.artist === 'Seedhe Maut'),
+    `expected a (Raat ki Rani, Seedhe Maut) pair, got ${JSON.stringify(pairs)}`
+  );
+});
+
+test('extractTrackAndArtistPairs strips a duplicated artist appended to the title', () => {
+  const { extractTrackAndArtistPairs } = mod;
+  const pairs = extractTrackAndArtistPairs('BAARISHEIN (Studio) Anuv Jain', 'Anuv Jain');
+  assert.ok(
+    pairs.some((p) => p.track === 'BAARISHEIN' && p.artist === 'Anuv Jain'),
+    `expected a (BAARISHEIN, Anuv Jain) pair, got ${JSON.stringify(pairs)}`
+  );
+});
+
+// ---------------------------------------------------------------------------
+// extractSegmentPairs: recover (title, artist) from heavily-tagged film titles
+// ---------------------------------------------------------------------------
+
+test('extractSegmentPairs pairs a mid-title song with an artist from another segment', () => {
+  const { extractSegmentPairs } = mod;
+  // Owner is a LABEL, and the real artist lives in a later segment.
+  const pairs = extractSegmentPairs(
+    'Aashiqui 2: Aasan Nahin Yahan 8K Full Video Song | Arijit Singh, Palak Muchhal',
+    'Sony Music India'
+  );
+  assert.ok(
+    pairs.some((p) => p.track === 'Aasan Nahin Yahan' && /Arijit Singh/i.test(p.artist)),
+    `expected a (Aasan Nahin Yahan, Arijit Singh) pair, got ${JSON.stringify(pairs)}`
+  );
+});
+
+test('extractSegmentPairs drops numeric/code segments and never pairs a title with itself', () => {
+  const { extractSegmentPairs } = mod;
+  const pairs = extractSegmentPairs('Raat ki Rani || Shakti || dl91', 'Seedhe Maut');
+  // "dl91" is a code, not a title; no pair should use it as the track.
+  assert.ok(!pairs.some((p) => /dl91/i.test(p.track)), `dl91 leaked as a title: ${JSON.stringify(pairs)}`);
+  assert.ok(!pairs.some((p) => p.track.toLowerCase() === p.artist.toLowerCase()), 'title == artist pair leaked');
+  assert.ok(pairs.some((p) => p.track === 'Raat ki Rani'), `expected Raat ki Rani as a title segment: ${JSON.stringify(pairs)}`);
+});
+
+test('extractSegmentPairs returns nothing for a plain unsegmented title', () => {
+  const { extractSegmentPairs } = mod;
+  assert.deepEqual(extractSegmentPairs('Blinding Lights', 'The Weeknd'), []);
+});
+
+// ---------------------------------------------------------------------------
+// isProbablyNotASong: skip doomed lookups for compilations / mixes
+// ---------------------------------------------------------------------------
+
+test('isProbablyNotASong flags compilations, jukeboxes and long mixes', () => {
+  const { isProbablyNotASong } = mod;
+  assert.equal(isProbablyNotASong('Arijit Singh Hits Songs | Arijit Singh Jukebox', 3652), true);
+  assert.equal(isProbablyNotASong('50 Nonstop Superhit Songs', 12677), true);
+  assert.equal(isProbablyNotASong('1 hour to relax, drive, study', 6110), true);
+  assert.equal(isProbablyNotASong('Best Of Bollywood Dance Songs', 4203), true);
+  // Very long runtime alone is enough.
+  assert.equal(isProbablyNotASong('Anything At All', 2000), true);
+});
+
+test('isProbablyNotASong leaves normal single songs alone', () => {
+  const { isProbablyNotASong } = mod;
+  assert.equal(isProbablyNotASong('Blinding Lights', 262), false);
+  assert.equal(isProbablyNotASong('Kesariya', 268), false);
+  assert.equal(isProbablyNotASong('Bohemian Rhapsody', 367), false);
+  // A short clip that happens to say "best of" is not conclusive.
+  assert.equal(isProbablyNotASong('Best Of Me', 210), false);
+});
+
+// ---------------------------------------------------------------------------
+// isRecordLabelOrUploader & resolveCanonicalMetadata
+// ---------------------------------------------------------------------------
+
+test('isRecordLabelOrUploader identifies major YouTube label and aggregator channels', () => {
+  assert.equal(isRecordLabelOrUploader('T-Series'), true);
+  assert.equal(isRecordLabelOrUploader('Sony Music India'), true);
+  assert.equal(isRecordLabelOrUploader('Zee Music Company'), true);
+  assert.equal(isRecordLabelOrUploader('Saregama Music'), true);
+  assert.equal(isRecordLabelOrUploader('Spinnin\' Records'), true);
+  assert.equal(isRecordLabelOrUploader('TaylorSwiftVEVO'), true);
+  assert.equal(isRecordLabelOrUploader('Coldplay Official'), true);
+  
+  // Real artist names are NOT labels
+  assert.equal(isRecordLabelOrUploader('The Weeknd'), false);
+  assert.equal(isRecordLabelOrUploader('Arijit Singh'), false);
+  assert.equal(isRecordLabelOrUploader('Taylor Swift'), false);
+  assert.equal(isRecordLabelOrUploader('Queen'), false);
+});
+
+test('isRelatedMatch allows label/channel uploaders when title match is strong', () => {
+  // Video on T-Series channel matching canonical song metadata
+  assert.equal(
+    isRelatedMatch(
+      'Kesariya',
+      'Pritam, Arijit Singh & Amitabh Bhattacharya',
+      'Kesariya - Brahmāstra | Ranbir Kapoor | Alia Bhatt',
+      'Sony Music India'
+    ),
+    true
+  );
+});
+
+test('resolveCanonicalMetadata returns null gracefully on empty inputs', async () => {
+  assert.equal(await resolveCanonicalMetadata('', ''), null);
+  assert.equal(await resolveCanonicalMetadata(undefined, undefined), null);
+});
+

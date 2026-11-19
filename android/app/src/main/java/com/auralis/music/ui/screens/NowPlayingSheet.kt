@@ -1,0 +1,109 @@
+package com.auralis.music.ui.screens
+
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
+import androidx.compose.ui.Modifier
+import com.auralis.music.data.service.PlaybackClockSource
+import com.auralis.music.domain.model.Artist
+import com.auralis.music.domain.model.Playlist
+import com.auralis.music.domain.model.Track
+import com.auralis.music.ui.player.NowPlayingModal
+import com.auralis.music.ui.viewmodel.PlayerUiState
+
+/**
+ * Backward-compatible NowPlayingSheet wrapper delegating to the exact Auralis NowPlayingModal.
+ */
+@OptIn(ExperimentalSharedTransitionApi::class)
+@Composable
+fun NowPlayingSheet(
+    uiState: PlayerUiState,
+    playbackPositionState: State<Long>,
+    lyricsClockSource: PlaybackClockSource? = null,
+    userPlaylists: List<Playlist> = emptyList(),
+    onPlayPauseClick: () -> Unit,
+    onSeekTo: (Long) -> Unit,
+    onNextClick: () -> Unit,
+    onPreviousClick: () -> Unit,
+    /** Listen Together guest: the song carousel only follows the room (see NowPlayingModal). */
+    followHostOnly: Boolean = false,
+    onToggleShuffle: () -> Unit,
+    onToggleRepeat: () -> Unit,
+    onToggleFavorite: () -> Unit,
+    onToggleLyricsView: () -> Unit = {},
+    onLyricsOffsetChange: (Long) -> Unit = {},
+    onSearchLyricsManually: ((String, String) -> Unit)? = null,
+    onSleepTimerSelect: (Int) -> Unit = {},
+    onSelectQueueTrack: (Int) -> Unit = {},
+    onSwipeToQueueTrack: (Int) -> Unit = onSelectQueueTrack,
+    onReorderQueue: ((Int, Int) -> Unit)? = null,
+    onRemoveQueueItem: ((Int) -> Unit)? = null,
+    onAddToPlaylist: (String, Track) -> Unit = { _, _ -> },
+    onCreatePlaylistAndAdd: (String, Track) -> Unit = { _, _ -> },
+    onPlayNextTrack: (Track) -> Unit = {},
+    onAddToQueueTrack: (Track) -> Unit = {},
+    onToggleFavoriteTrack: (Track) -> Unit = {},
+    isFavoriteTrack: (String) -> Boolean = { false },
+    onStartRadioTrack: (Track) -> Unit = {},
+    onAlbumClick: ((com.auralis.music.domain.model.PlaylistResult) -> Unit)? = null,
+    onArtistClick: ((Artist) -> Unit)? = null,
+    onDismiss: () -> Unit,
+    sharedTransitionScope: SharedTransitionScope? = null,
+    animatedVisibilityScope: AnimatedVisibilityScope? = null,
+    renderBackground: Boolean = true,
+    currentQuality: com.auralis.music.domain.model.AudioQuality = com.auralis.music.domain.model.AudioQuality.AUTO,
+    onAudioQualityChange: (com.auralis.music.domain.model.AudioQuality) -> Unit = {},
+    isTrackPinned: ((String) -> Boolean)? = null,
+    onPinTrackToSpeedDial: ((Track) -> Unit)? = null,
+    onOpenListenTogether: () -> Unit = {},
+    lyricsProviders: List<com.auralis.music.domain.model.LyricsProvider> = emptyList(),
+    lyricsProviderPicks: com.auralis.music.ui.viewmodel.LyricsProviderPicks = com.auralis.music.ui.viewmodel.LyricsProviderPicks(),
+    onPickLyricsProvider: (com.auralis.music.domain.model.LyricsProvider) -> Unit = {},
+    modifier: Modifier = Modifier
+) {
+    NowPlayingModal(
+        followHostOnly = followHostOnly,
+        uiState = uiState,
+        playbackPositionState = playbackPositionState,
+        lyricsClockSource = lyricsClockSource,
+        userPlaylists = userPlaylists,
+        onPlayPauseClick = onPlayPauseClick,
+        onSeekTo = onSeekTo,
+        onNextClick = onNextClick,
+        onPreviousClick = onPreviousClick,
+        onToggleShuffle = onToggleShuffle,
+        onToggleRepeat = onToggleRepeat,
+        onToggleFavorite = onToggleFavorite,
+        onSleepTimerSelect = onSleepTimerSelect,
+        onSelectQueueTrack = onSelectQueueTrack,
+        onSwipeToQueueTrack = onSwipeToQueueTrack,
+        onReorderQueue = onReorderQueue,
+        onRemoveQueueItem = onRemoveQueueItem,
+        onLyricsOffsetChange = onLyricsOffsetChange,
+        onSearchLyricsManually = onSearchLyricsManually,
+        onAddToPlaylist = onAddToPlaylist,
+        onCreatePlaylistAndAdd = onCreatePlaylistAndAdd,
+        onPlayNextTrack = onPlayNextTrack,
+        onAddToQueueTrack = onAddToQueueTrack,
+        onToggleFavoriteTrack = onToggleFavoriteTrack,
+        isFavoriteTrack = isFavoriteTrack,
+        onStartRadioTrack = onStartRadioTrack,
+        onAlbumClick = onAlbumClick,
+        onArtistClick = onArtistClick,
+        onDismiss = onDismiss,
+        sharedTransitionScope = sharedTransitionScope,
+        animatedVisibilityScope = animatedVisibilityScope,
+        renderBackground = renderBackground,
+        currentQuality = currentQuality,
+        onAudioQualityChange = onAudioQualityChange,
+        isTrackPinned = isTrackPinned,
+        onPinTrackToSpeedDial = onPinTrackToSpeedDial,
+        onOpenListenTogether = onOpenListenTogether,
+        lyricsProviders = lyricsProviders,
+        lyricsProviderPicks = lyricsProviderPicks,
+        onPickLyricsProvider = onPickLyricsProvider,
+        modifier = modifier
+    )
+}

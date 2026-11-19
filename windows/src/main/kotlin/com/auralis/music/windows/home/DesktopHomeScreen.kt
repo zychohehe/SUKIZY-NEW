@@ -1,0 +1,452 @@
+package com.auralis.music.windows.home
+
+import com.auralis.music.ui.i18n.desktopText
+
+import androidx.compose.ui.text.withStyle
+
+
+import com.auralis.music.ui.components.clickable
+import com.auralis.music.ui.components.IconButton
+import com.auralis.music.ui.components.FilledIconButton
+import com.auralis.music.ui.components.TextButton
+import com.auralis.music.ui.components.secondaryClick
+
+import androidx.compose.ui.layout.layout
+
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.alpha
+
+import androidx.compose.foundation.*
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.*
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import coil3.compose.AsyncImage
+import com.auralis.music.domain.model.*
+import com.auralis.music.ui.viewmodel.HomeUiState
+import java.time.LocalTime
+import kotlinx.coroutines.launch
+
+/** Windows-only Home: bounded cards, readable titles and responsive desktop columns. */
+@Composable
+internal fun DesktopHomeScreen(
+    state: HomeUiState,
+    currentTrackId: String? = null,
+    isPlaying: Boolean = false,
+    onPlay: (Track, List<Track>) -> Unit,
+    onShortcut: (SpeedDialItem) -> Unit,
+    onAlbum: (PlaylistResult) -> Unit,
+    onMenu: (Track) -> Unit,
+    onSearch: () -> Unit,
+    onSurprise: () -> Unit,
+    onChip: (HomeChip?) -> Unit,
+    onAlbumMenu: (PlaylistResult) -> Unit = {},
+    onUnpinShortcut: (SpeedDialItem) -> Unit = {},
+    shortcutCandidates: List<SpeedDialItem> = emptyList(),
+    onPinShortcut: (SpeedDialItem) -> Unit = {},
+    playlistCovers: Map<String, Playlist> = emptyMap(),
+    onShortcutMenu: (SpeedDialItem) -> Unit = {},
+    modifier: Modifier = Modifier,
+    findMusic: (@Composable () -> Unit)? = null,
+    onRefresh: () -> Unit = {},
+    youtubeConnected: Boolean = false,
+    newcomer: Boolean = false,
+    onConnectYouTube: () -> Unit = {},
+    recentsGrid: Boolean = false,
+    onToggleRecents: () -> Unit = {},
+    loadingMore: Boolean = false,
+    canLoadMore: Boolean = false,
+    loadMoreFailed: Boolean = false,
+    onLoadMore: () -> Unit = {},
+    moreSections: List<HomeSection> = emptyList(),
+    serviceShelves: List<DesktopHomeShelf>? = null, serviceRecents: List<Track>? = null,
+    serviceLoading: Boolean = false, serviceError: String? = null, libraryShelf: List<PlaylistResult> = emptyList(),
+    tasteShelf: DesktopHomeShelf? = null,
+    /** The listener's most-played songs, shown as Quick picks above Albums & singles. */
+    quickPicks: List<Track> = emptyList(),
+    /** The listener's most-played artists (Familiar Artists, in place of Quick picks). */
+    familiarArtists: List<FamiliarArtist> = emptyList(),
+    greetingName: String? = null,
+    greetingPalette: com.auralis.music.ui.theme.ArtworkPalette = com.auralis.music.ui.theme.DefaultArtworkPalette,
+    onOpenFamiliarArtist: (FamiliarArtist) -> Unit = {},
+    familiarActions: FamiliarArtistActions? = null,
+    favoriteIds: Set<String> = emptySet(),
+    onToggleFavorite: (Track) -> Unit = {}
+) {
+    val content = remember(state, moreSections, tasteShelf) { desktopHomeContent(state, moreSections, tasteShelf) }
+    val colors = MaterialTheme.colorScheme
+    val scroll = rememberLazyListState()
+    val recentsScroll = rememberLazyListState()
+    val loadingScroll = rememberLazyListState()
+    // Share the entrance between both login routes. Remember revealed rows so playback,
+    // portrait updates and scrolling back to a shelf never restart its animation.
+    val revealedSections = remember(newcomer, youtubeConnected) { HomeFeedEntrance() }
+    val scrollHover = remember { MutableInteractionSource() }
+    val scrollHovered by scrollHover.collectIsHoveredAsState()
+    val scrollbarAlpha by animateFloatAsState(if (scrollHovered) 1f else 0f, tween(160))
+    val recents = remember(serviceRecents, content.recents) {
+        val raw = serviceRecents ?: content.recents
+        com.auralis.music.domain.recommendations.TrackDeduplicator.deduplicateTracks(raw)
+    }
+    val shelves = serviceShelves ?: buildList {
+        addAll(content.shelves)
+        if (content.picks.isNotEmpty()) add(DesktopHomeShelf("quick-picks", "Quick picks", tracks = content.picks))
+    }
+    // Every shelf's first covers load together, so scrolling down finds them ready.
+    LaunchedEffect(shelves, recents) {
+        prefetchHomeArtwork(recents.take(24).map { it.thumbnail to it.id } + shelves.flatMap { shelf ->
+            shelf.tracks.take(12).map { it.thumbnail to it.id } + shelf.albums.take(12).map { it.thumbnail to null }
+        })
+    }
+    val loadMore by rememberUpdatedState(onLoadMore)
+    LaunchedEffect(scroll, loadingMore, canLoadMore, loadMoreFailed) {
+        if (canLoadMore && !loadingMore && !loadMoreFailed) snapshotFlow {
+            val layout = scroll.layoutInfo
+            layout.totalItemsCount > 0 && (layout.visibleItemsInfo.lastOrNull()?.index ?: -1) >= layout.totalItemsCount - 3
+        }.collect { nearEnd -> if (nearEnd) loadMore() }
+    }
+    val idle = currentTrackId == null && colors.background.luminance() < .5f
+    BoxWithConstraints(modifier.fillMaxSize().hoverable(scrollHover).then(if (idle) Modifier.background(Color(0xFF202020)) else Modifier)) {
+        // Four tracks per column; a partial next column invites horizontal scrolling.
+        val columnWidth = ((maxWidth - 32.dp) / when { maxWidth >= 1300.dp -> 4; maxWidth >= 900.dp -> 3; maxWidth >= 600.dp -> 2; else -> 1 })
+            .coerceIn(260.dp, 410.dp)
+        LazyColumn(Modifier.fillMaxSize(), state = scroll,
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 40.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp)) {
+            item("greeting") { HomeGreeting(greetingName, greetingPalette) }
+            if (newcomer && !youtubeConnected) item("welcome") {
+                Surface(color = colors.surfaceContainerHigh, shape = RoundedCornerShape(16.dp)) {
+                    Row(Modifier.fillMaxWidth().padding(20.dp), verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(desktopText("Make yourself at home"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                            Text(desktopText("Connect YouTube Music for your mixes and favourites, or start playing. Auralis learns what you like as you listen."),
+                                color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+                        }
+                        Button(onClick = onConnectYouTube) { Text(desktopText("Connect YouTube Music")) }
+                    }
+                }
+            }
+            if (recents.isNotEmpty()) item("recents") {
+                HomeFeedReveal("recents", revealedSections, Modifier.animateItem(fadeInSpec = null), 0) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    HomeHeading(desktopText("Recents"), null, trailing = {
+                        if (findMusic != null) findMusic() else IconButton(onClick = onSearch) { Icon(Icons.Outlined.Search, desktopText("Find music")) }
+                        IconButton(onClick = onToggleRecents) {
+                            Icon(if (recentsGrid) Icons.Outlined.ViewList else Icons.Outlined.GridView,
+                                if (recentsGrid) "Show recents as a list" else "Show recents as covers", Modifier.size(18.dp))
+                        }
+                    })
+                    if (recents.isEmpty()) {
+                        Text(desktopText(if (serviceLoading || state.isLoading) "Loading recents…" else "Your recently played music will appear here."),
+                            style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant,
+                            modifier = Modifier.padding(vertical = 12.dp))
+                    } else LazyRow(state = recentsScroll, modifier = Modifier.mouseDragScroll(recentsScroll), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        if (recentsGrid) items(recents, key = { it.id }) { track ->
+                            ArtworkCard(track.title, track.artist, track.thumbnail, currentTrackId == track.id && isPlaying,
+                                { onPlay(track, recents) }, { onMenu(track) }, trackId = track.id)
+                        } else items(recents.chunked(4), key = { it.first().id }) { tracks ->
+                            Column(Modifier.width(columnWidth)) {
+                                tracks.forEach { track -> CompactSong(track, currentTrackId == track.id && isPlaying,
+                                    { onPlay(track, recents) }, { onMenu(track) }, Modifier.fillMaxWidth()) }
+                            }
+                        }
+                    }
+                }
+                }
+            }
+            if (familiarArtists.size >= MIN_FAMILIAR_ARTISTS) item("familiar-artists") {
+                HomeFeedReveal("familiar-artists", revealedSections, Modifier.animateItem(fadeInSpec = null), 1) {
+                FamiliarArtistsRow(familiarArtists, onOpenFamiliarArtist, familiarActions ?: FamiliarArtistActions(
+                    { null }, { false }, {}, {}, { false }, {}, {}, { false }, {}, {}))
+                }
+            } else if (quickPicks.isNotEmpty()) item("most-played") {
+                HomeFeedReveal("most-played", revealedSections, Modifier.animateItem(fadeInSpec = null), 1) {
+                QuickPicksGrid(quickPicks, currentTrackId, isPlaying, favoriteIds, onPlay, onMenu, onToggleFavorite)
+                }
+            }
+            if (serviceLoading && shelves.isEmpty()) item("loading") {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    HomeHeading(desktopText("Albums & singles"), null)
+                    LazyRow(state = loadingScroll, modifier = Modifier.mouseDragScroll(loadingScroll), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        items(10) { Box(Modifier.size(150.dp).clip(RoundedCornerShape(12.dp)).background(colors.surfaceContainerHigh)) }
+                    }
+                }
+            }
+            items(shelves, key = { it.id }) { shelf ->
+                HomeFeedReveal("shelf:${shelf.id}", revealedSections, Modifier.animateItem(fadeInSpec = null), 2) {
+                HomeCarousel(shelf, currentTrackId, isPlaying, onPlay, onAlbum, onMenu, onAlbumMenu, playlistCovers)
+                }
+            }
+            if (libraryShelf.isNotEmpty() && shelves.none { it.title.equals("From your library", true) }) item("library") {
+                HomeFeedReveal("library", revealedSections, Modifier.animateItem(fadeInSpec = null), 3) {
+                HomeCarousel(DesktopHomeShelf("library", "From your library", albums = libraryShelf),
+                    currentTrackId, isPlaying, onPlay, onAlbum, onMenu, onAlbumMenu, playlistCovers)
+                }
+            }
+            if (serviceError != null || (serviceShelves == null && state.error != null)) item("error") {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(serviceError ?: state.error.orEmpty(), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium,
+                        color = colors.onSurfaceVariant)
+                    TextButton(onClick = onRefresh) { Text(desktopText("Try again")) }
+                }
+            }
+            if (loadingMore || canLoadMore) item("more") {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                    if (loadingMore) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                    else TextButton(onClick = onLoadMore) { Text(desktopText(if (loadMoreFailed) "Try loading more again" else "More music")) }
+                }
+            }
+        }
+        VerticalScrollbar(rememberScrollbarAdapter(scroll), Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(6.dp).alpha(scrollbarAlpha))
+    }
+}
+
+private class HomeFeedEntrance {
+    val revealed = mutableSetOf<String>()
+}
+
+/** Render at final size immediately; fade and lift only the pixels, never delay the feed. */
+@Composable
+private fun HomeFeedReveal(
+    id: String,
+    session: HomeFeedEntrance,
+    modifier: Modifier = Modifier,
+    order: Int = 0,
+    content: @Composable () -> Unit
+) {
+    val entrance = remember(session, id) { Animatable(if (id in session.revealed) 1f else 0f) }
+    LaunchedEffect(session, id) {
+        if (session.revealed.add(id)) entrance.animateTo(1f,
+            tween(durationMillis = 360, delayMillis = order.coerceIn(0, 3) * 45, easing = FastOutSlowInEasing))
+    }
+    Box(modifier.fillMaxWidth().graphicsLayer {
+        alpha = entrance.value
+        translationY = (1f - entrance.value) * 16.dp.toPx()
+    }) { content() }
+}
+
+@Composable
+private fun HomeCarousel(shelf: DesktopHomeShelf, currentTrackId: String?, playing: Boolean,
+    onPlay: (Track, List<Track>) -> Unit, onAlbum: (PlaylistResult) -> Unit,
+    onMenu: (Track) -> Unit, onAlbumMenu: (PlaylistResult) -> Unit, playlistCovers: Map<String, Playlist>) {
+    val order = shelf.order.ifEmpty { shelf.tracks.map { "track:${it.id}" } + shelf.albums.map { "album:${it.id}" } }
+    val tracks = shelf.tracks.associateBy { it.id }; val albums = shelf.albums.associateBy { it.id }
+    val row = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        HomeHeading(shelf.title, shelf.subtitle, trailing = {
+            if (row.canScrollBackward) IconButton(onClick = { scope.launch { row.animateScrollToItem((row.firstVisibleItemIndex - 4).coerceAtLeast(0)) } }) {
+                Icon(Icons.Outlined.ChevronLeft, "Previous in ${shelf.title}")
+            }
+            if (row.canScrollForward) IconButton(onClick = { scope.launch { row.animateScrollToItem((row.firstVisibleItemIndex + 4).coerceAtMost(order.lastIndex)) } }) {
+                Icon(Icons.Outlined.ChevronRight, "Next in ${shelf.title}")
+            }
+        })
+        LazyRow(state = row, modifier = Modifier.mouseDragScroll(row), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            items(order, key = { it }) { key ->
+                if (key.startsWith("track:")) tracks[key.removePrefix("track:")]?.let { track ->
+                    ArtworkCard(track.title, track.artist, track.thumbnail, currentTrackId == track.id && playing,
+                        { onPlay(track, shelf.tracks) }, { onMenu(track) }, trackId = track.id)
+                } else albums[key.removePrefix("album:")]?.let { album ->
+                    ArtworkCard(album.title, album.author.orEmpty(), album.thumbnail, false,
+                        { onAlbum(album) }, { onAlbumMenu(album) }, opensPage = true, playlistCover = playlistCovers[album.id])
+                }
+            }
+        }
+    }
+}
+@Composable
+private fun HomeHeading(title: String, subtitle: String?, action: String? = null, onAction: () -> Unit = {}, trailing: @Composable () -> Unit = {}) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(title, style = MaterialTheme.typography.titleLarge.copy(fontSize = 25.sp, lineHeight = 31.sp),
+                fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (!subtitle.isNullOrBlank()) Text(subtitle, style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (action != null) TextButton(onClick = onAction) { Text(action) }
+        trailing()
+    }
+}
+
+@Composable
+private fun ShortcutCard(item: SpeedDialItem, currentTrackId: String?, playing: Boolean, click: () -> Unit,
+    menu: (() -> Unit)?, unpin: (() -> Unit)?, modifier: Modifier) {
+    val interactions = remember { MutableInteractionSource() }
+    val hovered by interactions.collectIsHoveredAsState()
+    val active = item.track?.id == currentTrackId && playing
+    val colors = MaterialTheme.colorScheme
+    val background by animateColorAsState(if (hovered) colors.surfaceContainerHigh else colors.surfaceContainer, tween(150))
+    val playAlpha by animateFloatAsState(if (active) 1f else 0f, tween(150))
+    Box(modifier) {
+      // Right-click opens the song's or album's own options (they include unpinning from Home).
+      Box(Modifier.secondaryClick(menu ?: unpin)) {
+        Row(Modifier.fillMaxWidth().height(78.dp).clip(RoundedCornerShape(12.dp))
+            .background(background)
+            .hoverable(interactions).clickable(onClick = click), verticalAlignment = Alignment.CenterVertically) {
+            HomeArtwork(item.image ?: item.track?.thumbnail, Modifier.size(78.dp), item.track?.id)
+            Column(Modifier.weight(1f).padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(item.name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall,
+                    color = if (active) colors.primary else colors.onSurface)
+                Text(item.track?.artist ?: when (item.type) {
+                    SpeedDialType.ALBUM -> "Album"; SpeedDialType.PLAYLIST -> "Playlist"; SpeedDialType.ARTIST -> "Artist"; else -> "Song"
+                }, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+            }
+            Icon(if (active) Icons.Outlined.GraphicEq else Icons.Outlined.PlayArrow,
+                if (active) "Playing" else null, tint = colors.primary, modifier = Modifier.padding(end = 12.dp).size(20.dp).alpha(playAlpha))
+        }
+      }
+    }
+}
+
+/**
+ * "Good morning, Name" at the top of Home, by the time of day with Li Music's hours: night before
+ * 5, morning before 12, afternoon before 18, evening after. Picked when Home opens, as Li Music
+ * does (a greeting that flips while you look at it is uncanny).
+ */
+@Composable
+internal fun HomeGreeting(name: String?, palette: com.auralis.music.ui.theme.ArtworkPalette) {
+    val part = remember {
+        when (java.time.LocalTime.now().hour) {
+            in 0..4 -> "Good night"; in 5..11 -> "Good morning"; in 12..17 -> "Good afternoon"; else -> "Good evening"
+        }
+    }
+    val targetColour = greetingThemeColour(palette, MaterialTheme.colorScheme.background)
+    val colour by animateColorAsState(targetColour, tween(600))
+    val text = greetingNameText(desktopText(part), name, colour)
+    Text(text,
+        style = MaterialTheme.typography.headlineMedium.copy(fontSize = 32.sp, lineHeight = 38.sp, letterSpacing = (-0.3).sp),
+        fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis,
+        // Sits closer to Recents than the 34dp between shelves (padding can't be negative).
+        modifier = Modifier.padding(top = 6.dp).layout { measurable, constraints ->
+            val placeable = measurable.measure(constraints)
+            layout(placeable.width, (placeable.height - 18.dp.roundToPx()).coerceAtLeast(0)) { placeable.place(0, 0) }
+        })
+}
+
+/** Quick picks: a numbered three-column grid of the most-played songs, with like and options. */
+@Composable
+private fun QuickPicksGrid(tracks: List<Track>, currentTrackId: String?, isPlaying: Boolean, favoriteIds: Set<String>,
+    onPlay: (Track, List<Track>) -> Unit, onMenu: (Track) -> Unit, onToggleFavorite: (Track) -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        HomeHeading(desktopText("Quick picks"), null, trailing = {
+            TextButton(onClick = { tracks.firstOrNull()?.let { onPlay(it, tracks) } }) {
+                Icon(Icons.Outlined.PlayArrow, null, Modifier.size(18.dp)); Spacer(Modifier.width(4.dp)); Text(desktopText("Play all"))
+            }
+        })
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+            tracks.take(12).chunked(4).forEachIndexed { column, chunk ->
+                Column(Modifier.weight(1f)) {
+                    chunk.forEachIndexed { row, track ->
+                        val active = track.id == currentTrackId && isPlaying
+                        val liked = track.id in favoriteIds
+                        Box(Modifier.secondaryClick { onMenu(track) }) {
+                            Row(Modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(10.dp))
+                                .clickable { onPlay(track, tracks) }.padding(horizontal = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Text("${column * 4 + row + 1}", Modifier.width(18.dp), style = MaterialTheme.typography.bodySmall,
+                                    color = colors.onSurfaceVariant)
+                                HomeArtwork(track.thumbnail, Modifier.size(42.dp).clip(RoundedCornerShape(6.dp)), track.id)
+                                Column(Modifier.weight(1f)) {
+                                    Text(track.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall,
+                                        color = if (active) colors.primary else colors.onSurface)
+                                    Text(track.artist, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall,
+                                        color = colors.onSurfaceVariant)
+                                }
+                                IconButton(onClick = { onToggleFavorite(track) }, modifier = Modifier.size(30.dp)) {
+                                    Icon(if (liked) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder,
+                                        if (liked) "Remove from liked songs" else "Add to liked songs", Modifier.size(18.dp),
+                                        tint = if (liked) colors.primary else colors.onSurfaceVariant)
+                                }
+                                IconButton(onClick = { onMenu(track) }, modifier = Modifier.size(30.dp)) {
+                                    Icon(Icons.Outlined.MoreHoriz, desktopText("Song options"), Modifier.size(18.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            // Keep columns the same width when there are fewer than twelve picks.
+            repeat(3 - (tracks.take(12).size + 3) / 4) { Spacer(Modifier.weight(1f)) }
+        }
+    }
+}
+
+@Composable
+internal fun CompactSong(track: Track, active: Boolean, click: () -> Unit, menu: () -> Unit, modifier: Modifier) {
+    val hover = remember { MutableInteractionSource() }
+    val hovered by hover.collectIsHoveredAsState()
+    val highlight by animateColorAsState(Color.White.copy(alpha = if (hovered) .08f else 0f),
+        tween(180), label = "recentSongHighlight")
+    Box(modifier) {
+      Box(Modifier.secondaryClick(menu)) {
+        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(highlight).hoverable(hover)
+            .clickable(interactionSource = hover, indication = null, onClick = click).padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            HomeArtwork(track.thumbnail, Modifier.size(48.dp).clip(RoundedCornerShape(7.dp)), track.id)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(track.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleMedium,
+                    color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
+                Text(track.artist, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            IconButton(onClick = menu, modifier = Modifier.size(28.dp)) { Icon(Icons.Outlined.MoreHoriz, desktopText("Song options"), Modifier.size(18.dp)) }
+        }
+      }
+    }
+}
+
+@Composable
+private fun ArtworkCard(title: String, subtitle: String, image: String?, active: Boolean, click: () -> Unit, menu: (() -> Unit)?, opensPage: Boolean = false, playlistCover: Playlist? = null, trackId: String? = null) {
+    val interactions = remember { MutableInteractionSource() }
+    val hovered by interactions.collectIsHoveredAsState()
+    Box(Modifier.secondaryClick(menu)) {
+        Column(Modifier.width(150.dp).clip(RoundedCornerShape(12.dp)).hoverable(interactions).clickable(onClick = click)) {
+            Box(Modifier.size(150.dp).clip(RoundedCornerShape(12.dp))) {
+                if (playlistCover != null) com.auralis.music.ui.library.PlaylistCoverArt(playlistCover, emptyList(), 12.dp)
+                else HomeArtwork(image, Modifier.fillMaxSize(), trackId)
+                // No hover play/open button (the card itself is the click target); only the song
+                // that's playing keeps a small "playing" badge.
+                androidx.compose.animation.AnimatedVisibility(visible = active, enter = fadeIn(tween(150)), exit = fadeOut(tween(150)),
+                    modifier = Modifier.align(Alignment.BottomEnd)) {
+                  FilledIconButton(onClick = click, modifier = Modifier.padding(9.dp).size(36.dp)) {
+                    Icon(Icons.Outlined.GraphicEq, desktopText("Playing"))
+                }
+                }
+            }
+            Text(title, Modifier.padding(top = 10.dp), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.titleMedium, color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface)
+            Text(subtitle, Modifier.padding(top = 4.dp, bottom = 4.dp), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}

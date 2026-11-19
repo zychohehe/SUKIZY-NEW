@@ -1,0 +1,454 @@
+package com.auralis.music.data.repository
+
+import com.auralis.music.data.datastore.SettingsDataStore
+import com.auralis.music.data.local.dao.*
+import com.auralis.music.data.local.entity.HistoryEntity
+import com.auralis.music.data.local.entity.PlayCountEntity
+import com.auralis.music.data.local.entity.PlaylistTrackCrossRef
+import com.auralis.music.data.local.mapper.*
+import com.auralis.music.data.network.ArtworkIdentity
+import com.auralis.music.domain.model.*
+import com.auralis.music.domain.recommendations.TrackDeduplicator
+import com.auralis.music.domain.repository.HistoryRepository
+import com.auralis.music.domain.repository.LibraryRepository
+import com.auralis.music.domain.repository.SettingsRepository
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
+import java.util.UUID
+
+internal fun importedPlaylistLocalId(source: String, remoteId: String): String =
+    "imported:${source.lowercase(java.util.Locale.ROOT)}:${remoteId.trim()}"
+
+internal fun hasSpotifyReleaseArtwork(track: Track): Boolean {
+    if (track.album.isNullOrBlank() || track.thumbnail.isBlank()) return false
+    val uri = runCatching { java.net.URI(track.thumbnail) }.getOrNull() ?: return false
+    val host = uri.host?.lowercase(java.util.Locale.ROOT) ?: return false
+    return uri.scheme.equals("https", ignoreCase = true) &&
+        (host == "i.scdn.co" || host.endsWith(".spotifycdn.com")) &&
+        !track.thumbnail.contains("mosaic", ignoreCase = true)
+}
+
+/** Import metadata identifies a particular recording and release; a later search result does not. */
+internal fun shouldRefreshImportedArtwork(source: String, incoming: Track, existing: com.auralis.music.data.local.entity.TrackEntity): Boolean {
+    if (incoming.thumbnail.isBlank() || incoming.thumbnail == existing.thumbnail) return false
+    if (ArtworkIdentity.normalized(incoming.title) != ArtworkIdentity.normalized(existing.title) ||
+        ArtworkIdentity.normalized(incoming.artist) != ArtworkIdentity.normalized(existing.artist) ||
+        (incoming.duration > 0 && existing.duration > 0 &&
+            kotlin.math.abs(incoming.duration - existing.duration) > 12L)) return false
+    return when (source) {
+        "spotify" -> hasSpotifyReleaseArtwork(incoming)
+        "youtube_music" -> {
+            // Do not let a YouTube playlist overwrite a known Spotify release image.
+            if (hasSpotifyReleaseArtwork(existing.toDomain())) return false
+            val uri = runCatching { java.net.URI(incoming.thumbnail) }.getOrNull() ?: return false
+            val host = uri.host?.lowercase(java.util.Locale.ROOT) ?: return false
+            uri.scheme.equals("https", ignoreCase = true) &&
+                (host == "i.ytimg.com" && uri.path?.contains("/vi/${incoming.id}/") == true ||
+                    host == "yt3.googleusercontent.com" || host.endsWith(".ggpht.com"))
+        }
+        else -> false
+    }
+}
+
+class LibraryRepositoryImpl(
+    private val trackDao: TrackDao,
+    private val playlistDao: PlaylistDao,
+    private val libraryDao: LibraryDao
+) : LibraryRepository {
+
+    override fun getFavoriteTracks(): Flow<List<Track>> {
+        return trackDao.getFavoriteTracksFlow().map { list -> list.map { it.toDomain() } }
+    }
+
+    override fun isFavorite(trackId: String): Flow<Boolean> {
+        return trackDao.isFavoriteFlow(trackId).map { it == true }
+    }
+
+    override suspend fun toggleFavorite(track: Track) {
+        val existing = trackDao.getTrackById(track.id)
+        val nextFav = !(existing?.isFavorite ?: false)
+        if (existing == null) trackDao.upsertTrack(track.toEntity())
+        trackDao.setFavorite(track.id, nextFav, if (nextFav) System.currentTimeMillis() else null)
+    }
+
+    override suspend fun setFavorite(track: Track, isFavorite: Boolean) {
+        val existing = trackDao.getTrackById(track.id)
+        if (existing == null) {
+            trackDao.upsertTrack(track.toEntity())
+        } else if (track.thumbnail.isNotBlank() && existing.thumbnail != track.thumbnail &&
+            (existing.thumbnail.isBlank() || hasSpotifyReleaseArtwork(track))) {
+            trackDao.updateVerifiedRelease(track.id, existing.album, existing.thumbnail,
+                track.album, track.thumbnail)
+        }
+        // Re-liking an already liked song (cloud sync and imports re-apply every like) keeps
+        // when it was first liked. Restamping moved each synced song to the top of Liked, one
+        // write at a time, so the Liked cover collage kept reshuffling while Library opened.
+        if (isFavorite && existing?.isFavorite == true && existing.favoriteAddedAt != null) return
+        trackDao.setFavorite(track.id, isFavorite, if (isFavorite) System.currentTimeMillis() else null)
+    }
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    override fun getPlaylists(): Flow<List<Playlist>> {
+        return playlistDao.getAllPlaylistsWithTracksFlow().map { list ->
+            list.map { tuple ->
+                val orderedTracks = playlistDao.getOrderedTracksForPlaylist(tuple.playlist.id)
+                Playlist(
+                    id = tuple.playlist.id,
+                    title = tuple.playlist.title,
+                    description = tuple.playlist.description,
+                    coverUrl = tuple.playlist.coverUrl,
+                    tracks = orderedTracks.map { it.toDomain() }.filter { it.title.isNotBlank() && (tuple.playlist.id.startsWith("imported:") || !it.title.startsWith("Track ")) },
+                    createdAt = tuple.playlist.createdAt,
+                    isCustom = tuple.playlist.isCustom
+                )
+            }
+        }.flowOn(kotlinx.coroutines.Dispatchers.Default)
+    }
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    override fun getPlaylist(playlistId: String): Flow<Playlist?> {
+        return playlistDao.getPlaylistEntityFlow(playlistId).flatMapLatest { entity ->
+            if (entity == null) flowOf(null)
+            else {
+                playlistDao.getOrderedTracksForPlaylistFlow(playlistId).map { trackEntities ->
+                    Playlist(
+                        id = entity.id,
+                        title = entity.title,
+                        description = entity.description,
+                        coverUrl = entity.coverUrl,
+                        tracks = trackEntities.map { it.toDomain() }.filter { it.title.isNotBlank() && (entity.id.startsWith("imported:") || !it.title.startsWith("Track ")) },
+                        createdAt = entity.createdAt,
+                        isCustom = entity.isCustom
+                    )
+                }
+            }
+        }.flowOn(kotlinx.coroutines.Dispatchers.Default)
+    }
+
+    override suspend fun createPlaylist(title: String, description: String?, coverUrl: String?): Playlist {
+        val playlist = Playlist(
+            id = UUID.randomUUID().toString(),
+            title = title,
+            description = description,
+            coverUrl = coverUrl,
+            createdAt = System.currentTimeMillis()
+        )
+        playlistDao.upsertPlaylist(playlist.toEntity())
+        return playlist
+    }
+
+    override suspend fun upsertImportedPlaylist(
+        source: String,
+        remoteId: String,
+        title: String,
+        description: String?,
+        coverUrl: String?
+    ): Playlist {
+        require(source.isNotBlank() && remoteId.isNotBlank())
+        return upsertPlaylistById(importedPlaylistLocalId(source, remoteId), title, description, coverUrl)
+    }
+
+    override suspend fun setPlaylistCreatedAt(playlistId: String, createdAt: Long) {
+        playlistDao.setCreatedAt(playlistId, createdAt)
+    }
+
+    override suspend fun restorePlaylist(id: String, title: String, description: String?, coverUrl: String?): Playlist {
+        require(id.isNotBlank())
+        return upsertPlaylistById(id, title, description, coverUrl)
+    }
+
+    private suspend fun upsertPlaylistById(id: String, title: String, description: String?, coverUrl: String?): Playlist {
+        val existing = playlistDao.getPlaylistEntity(id)
+        if (existing != null) {
+            playlistDao.updatePlaylist(id, title, description, coverUrl)
+            return Playlist(id, title, description, coverUrl, createdAt = existing.createdAt, isCustom = existing.isCustom)
+        }
+        val playlist = Playlist(id = id, title = title, description = description, coverUrl = coverUrl)
+        playlistDao.upsertPlaylist(playlist.toEntity())
+        return playlist
+    }
+
+    override suspend fun updatePlaylist(playlistId: String, title: String, description: String?, coverUrl: String?) {
+        playlistDao.updatePlaylist(playlistId, title, description, coverUrl)
+    }
+
+    override suspend fun addTrackToPlaylist(playlistId: String, track: Track): Boolean {
+        val orderedTracks = playlistDao.getOrderedTracksForPlaylist(playlistId)
+        if (orderedTracks.any { it.id == track.id }) {
+            return false
+        }
+        trackDao.upsertTrackPreservingFavorite(track.toEntity())
+        // Settings → Content → Playlists → Add to playlist position.
+        val position = com.auralis.music.data.datastore.ContentSettingsStore.value.addToPlaylistPosition
+        if (position == com.auralis.music.domain.model.AddToPlaylistPosition.BEGINNING && orderedTracks.isNotEmpty()) {
+            val refs = (listOf(track.id) + orderedTracks.map { it.id }).mapIndexed { index, id ->
+                PlaylistTrackCrossRef(playlistId, id, index)
+            }
+            playlistDao.replacePlaylistCrossRefs(playlistId, refs)
+        } else {
+            playlistDao.insertCrossRef(PlaylistTrackCrossRef(playlistId, track.id, orderedTracks.size))
+        }
+        return true
+    }
+
+    override suspend fun removeTrackFromPlaylist(playlistId: String, trackId: String) {
+        playlistDao.removeTrackFromPlaylist(playlistId, trackId)
+    }
+
+    override suspend fun deletePlaylist(playlistId: String) {
+        playlistDao.deletePlaylist(playlistId)
+    }
+
+    override suspend fun reorderPlaylist(playlistId: String, tracks: List<Track>) {
+        trackDao.upsertTracksPreservingFavorite(tracks.map { it.toEntity() })
+        val refs = tracks.mapIndexed { index, track ->
+            PlaylistTrackCrossRef(playlistId, track.id, index)
+        }
+        playlistDao.replacePlaylistCrossRefs(playlistId, refs)
+    }
+
+    override suspend fun replacePlaylistTracks(playlistId: String, tracks: List<Track>) {
+        val importSource = when {
+            playlistId.startsWith("imported:spotify:") -> "spotify"
+            playlistId.startsWith("imported:youtube_music:") -> "youtube_music"
+            else -> ""
+        }
+        val previous = if (importSource.isNotEmpty()) {
+            tracks.map { it.id }.distinct().chunked(900)
+                .flatMap { trackDao.getTracksByIds(it) }.associateBy { it.id }
+        } else emptyMap()
+        trackDao.upsertTracksPreservingFavorite(tracks.map { it.toEntity() })
+        // Reimporting the source may correct a cover previously chosen by a catalog search.
+        // Only refresh when the saved row still identifies the same recording.
+        tracks.forEach { incoming ->
+            val before = previous[incoming.id] ?: return@forEach
+            if (shouldRefreshImportedArtwork(importSource, incoming, before)) {
+                trackDao.updateVerifiedRelease(incoming.id, before.album, before.thumbnail,
+                    incoming.album ?: before.album, incoming.thumbnail)
+            }
+        }
+        val refs = tracks.mapIndexed { index, track ->
+            PlaylistTrackCrossRef(playlistId, track.id, index)
+        }
+        playlistDao.replacePlaylistCrossRefs(playlistId, refs)
+    }
+
+    override suspend fun updateTrackThumbnail(trackId: String, thumbnail: String) {
+        trackDao.updateThumbnail(trackId, thumbnail)
+    }
+
+    override suspend fun fillMissingTrackThumbnail(trackId: String, thumbnail: String) {
+        if (thumbnail.isNotBlank()) trackDao.fillMissingThumbnail(trackId, thumbnail)
+    }
+
+    override suspend fun updateVerifiedTrackRelease(trackId: String, expectedAlbum: String?,
+        expectedThumbnail: String, album: String?, thumbnail: String): Boolean =
+        trackDao.updateVerifiedRelease(trackId, expectedAlbum, expectedThumbnail, album, thumbnail) > 0
+
+    override suspend fun getAllTracks(): List<Track> =
+        trackDao.getAllTracks().map { it.toDomain() }
+
+    override fun getSavedArtists(): Flow<List<SavedArtist>> {
+        return libraryDao.getSavedArtistsFlow().map { list -> list.map { it.toDomain() } }
+    }
+
+    override fun isArtistSaved(artistId: String): Flow<Boolean> {
+        return libraryDao.isArtistSavedFlow(artistId)
+    }
+
+    override suspend fun saveArtist(artist: SavedArtist) {
+        libraryDao.upsertArtist(artist.toEntity())
+    }
+
+    override suspend fun removeArtist(artistId: String) {
+        libraryDao.deleteArtist(artistId)
+    }
+
+    override fun getSavedAlbums(): Flow<List<SavedAlbum>> {
+        return libraryDao.getSavedAlbumsFlow().map { list -> list.map { it.toDomain() } }
+    }
+
+    override fun isAlbumSaved(albumId: String): Flow<Boolean> {
+        return libraryDao.isAlbumSavedFlow(albumId)
+    }
+
+    override suspend fun saveAlbum(album: SavedAlbum) {
+        libraryDao.upsertAlbum(album.toEntity())
+    }
+
+    override suspend fun removeAlbum(albumId: String) {
+        libraryDao.deleteAlbum(albumId)
+    }
+}
+
+class HistoryRepositoryImpl(
+    private val trackDao: TrackDao,
+    private val historyDao: HistoryDao,
+    private val playCountDao: PlayCountDao,
+    private val playbackEventDao: com.auralis.music.data.local.dao.PlaybackEventDao? = null
+) : HistoryRepository {
+
+    override fun getHistory(): Flow<List<HistoryEntry>> {
+        return historyDao.getHistoryWithTracksFlow()
+            .map { list ->
+                val seenFps = mutableListOf<com.auralis.music.domain.recommendations.SongFingerprint>()
+                val seenKeys = mutableSetOf<String>()
+                val deduplicated = mutableListOf<HistoryEntry>()
+
+                for (item in list) {
+                    val entry = item.toDomain()
+                    val fp = TrackDeduplicator.getSongFingerprint(entry.track)
+                    val fastKey = if (fp.normalizedBaseTitle.isNotBlank() && fp.normalizedArtist.isNotBlank()) {
+                        "${fp.normalizedArtist}::${fp.normalizedBaseTitle}"
+                    } else null
+
+                    val isDup = (fastKey != null && seenKeys.contains(fastKey)) ||
+                            seenFps.any { existingFp ->
+                                TrackDeduplicator.isDuplicateSong(existingFp, fp, matchAlternateVersions = true)
+                            }
+
+                    if (!isDup) {
+                        if (fastKey != null) seenKeys.add(fastKey)
+                        seenFps.add(fp)
+                        deduplicated.add(entry)
+                    }
+                }
+                deduplicated
+            }
+            .flowOn(Dispatchers.Default)
+    }
+
+    override suspend fun addToHistory(track: Track): Unit = withContext(Dispatchers.IO) {
+        if (track.id.isBlank()) return@withContext
+        trackDao.upsertTrackPreservingFavorite(track.toEntity())
+
+        // Remove any existing duplicate track (e.g. alternate YouTube video ID or cut of the same song)
+        val trackFp = TrackDeduplicator.getSongFingerprint(track)
+        val existingEntries = historyDao.getHistoryWithTracks()
+        val idsToRemove = mutableListOf<String>()
+        for (entry in existingEntries) {
+            val existingTrack = entry.track.toDomain()
+            if (existingTrack.id != track.id) {
+                val existingFp = TrackDeduplicator.getSongFingerprint(existingTrack)
+                if (TrackDeduplicator.isDuplicateSong(existingFp, trackFp, matchAlternateVersions = true)) {
+                    idsToRemove.add(existingTrack.id)
+                }
+            }
+        }
+        for (id in idsToRemove) {
+            historyDao.removeFromHistory(id)
+        }
+
+        // Upsert current track at the latest timestamp so it appears at index 0 (the very top)
+        historyDao.upsertHistory(HistoryEntity(trackId = track.id, playedAt = System.currentTimeMillis()))
+        historyDao.pruneHistoryToCap()
+    }
+
+    override suspend fun removeFromHistory(trackId: String): Unit = withContext(Dispatchers.IO) {
+        val existingEntries = historyDao.getHistoryWithTracks()
+        val targetTrack = existingEntries.firstOrNull { it.track.id == trackId }?.track?.toDomain()
+        historyDao.removeFromHistory(trackId)
+        if (targetTrack != null) {
+            val targetFp = TrackDeduplicator.getSongFingerprint(targetTrack)
+            val idsToRemove = mutableListOf<String>()
+            for (entry in existingEntries) {
+                val existingTrack = entry.track.toDomain()
+                if (existingTrack.id != trackId) {
+                    val existingFp = TrackDeduplicator.getSongFingerprint(existingTrack)
+                    if (TrackDeduplicator.isDuplicateSong(existingFp, targetFp, matchAlternateVersions = true)) {
+                        idsToRemove.add(existingTrack.id)
+                    }
+                }
+            }
+            for (id in idsToRemove) {
+                historyDao.removeFromHistory(id)
+            }
+        }
+    }
+
+    override suspend fun clearHistory(): Unit = withContext(Dispatchers.IO) {
+        historyDao.clearHistory()
+        playCountDao.clearPlayCounts()
+    }
+
+    override fun getTopPlayedTracks(): Flow<List<PlayCountEntry>> {
+        return playCountDao.getTopPlayedTracksFlow().map { list -> list.map { it.toDomain() } }
+    }
+
+    override suspend fun recordPlay(track: Track): Unit = withContext(Dispatchers.IO) {
+        if (track.id.isBlank()) return@withContext
+        trackDao.upsertTrackPreservingFavorite(track.toEntity())
+        val existing = playCountDao.getPlayCount(track.id)
+        val count = (existing?.count ?: 0) + 1
+        playCountDao.upsertPlayCount(
+            PlayCountEntity(
+                trackId = track.id,
+                count = count,
+                lastPlayed = System.currentTimeMillis()
+            )
+        )
+        // Stats listening time is recorded by ListeningTimeTracker with the real played duration
+        // when the song ends; logging the full song length here on every start made skips count
+        // as complete listens.
+    }
+
+    override suspend fun getPlayCounts(): List<PlayCountEntry> {
+        return playCountDao.getAllPlayCounts().map { it.toDomain() }
+    }
+
+    override suspend fun getForgottenFavorites(cutoffTimestamp: Long): List<Track> {
+        return historyDao.getForgottenHistoryTracks(cutoffTimestamp).map { it.track.toDomain() }
+    }
+
+    override suspend fun getRecentHeavyRotation(fromTimestamp: Long): List<Track> {
+        return historyDao.getRecentHistoryTracks(fromTimestamp).map { it.track.toDomain() }
+    }
+
+    override suspend fun getLikedSeeds(limit: Int): List<Track> {
+        return trackDao.getFavoriteTracksList(limit).map { it.toDomain() }
+    }
+}
+
+class SettingsRepositoryImpl(
+    private val settingsDataStore: SettingsDataStore
+) : SettingsRepository {
+
+    override val settingsFlow: Flow<PlayerSettings> = settingsDataStore.settingsFlow
+
+    override suspend fun updateSettings(settings: PlayerSettings) {
+        settingsDataStore.updateSettings(settings)
+    }
+
+    override suspend fun setThemeMode(mode: ThemeMode) {
+        settingsDataStore.setThemeMode(mode)
+    }
+
+    override suspend fun setAudioQuality(quality: AudioQuality) {
+        settingsDataStore.setAudioQuality(quality)
+    }
+
+    override suspend fun setGaplessPlayback(enabled: Boolean) {
+        settingsDataStore.setGaplessPlayback(enabled)
+    }
+
+    override suspend fun setSkipSilence(enabled: Boolean) {
+        settingsDataStore.setSkipSilence(enabled)
+    }
+
+    override suspend fun setSpatialAudio(enabled: Boolean) {
+        settingsDataStore.setSpatialAudio(enabled)
+    }
+
+    override suspend fun setVolume(volume: Float) {
+        settingsDataStore.setVolume(volume)
+    }
+
+    override suspend fun setPlaybackRate(rate: Float) {
+        settingsDataStore.setPlaybackRate(rate)
+    }
+}

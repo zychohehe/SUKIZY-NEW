@@ -1,0 +1,365 @@
+package com.auralis.music.data.local.dao
+
+import androidx.room.*
+import com.auralis.music.data.local.entity.*
+import kotlinx.coroutines.flow.Flow
+
+@Dao
+interface TrackDao {
+    @Upsert
+    suspend fun upsertTrack(track: TrackEntity)
+
+    @Upsert
+    suspend fun upsertTracks(tracks: List<TrackEntity>)
+
+    @Query("UPDATE tracks SET thumbnail = :thumbnail WHERE id = :id")
+    suspend fun updateThumbnail(id: String, thumbnail: String)
+
+    /** Fills a cover only where the row has none, so a release cover is never replaced. */
+    @Query("UPDATE tracks SET thumbnail = :thumbnail WHERE id = :id AND (thumbnail IS NULL OR thumbnail = '')")
+    suspend fun fillMissingThumbnail(id: String, thumbnail: String): Int
+
+    @Query("""UPDATE tracks SET album = :album, thumbnail = :thumbnail
+        WHERE id = :id AND thumbnail = :expectedThumbnail
+          AND (album = :expectedAlbum OR (album IS NULL AND :expectedAlbum IS NULL))""")
+    suspend fun updateVerifiedRelease(id: String, expectedAlbum: String?, expectedThumbnail: String,
+        album: String?, thumbnail: String): Int
+
+    @Query("SELECT * FROM tracks WHERE id = :id LIMIT 1")
+    suspend fun getTrackById(id: String): TrackEntity?
+
+    @Query("SELECT * FROM tracks WHERE id IN (:ids)")
+    suspend fun getTracksByIds(ids: List<String>): List<TrackEntity>
+
+    @Query("SELECT * FROM tracks")
+    suspend fun getAllTracks(): List<TrackEntity>
+
+    @Transaction
+    suspend fun upsertTrackPreservingFavorite(track: TrackEntity) {
+        val existing = getTrackById(track.id)
+        if (existing != null) {
+            val preserved = TrackMetadataGuard.merge(existing, track)
+            upsertTrack(preserved)
+        } else {
+            upsertTrack(track)
+        }
+    }
+
+    @Transaction
+    suspend fun upsertTracksPreservingFavorite(tracks: List<TrackEntity>) {
+        if (tracks.isEmpty()) return
+        val unique = tracks.distinctBy { it.id }
+        val existingMap = unique.map { it.id }.chunked(900)
+            .flatMap { getTracksByIds(it) }.associateBy { it.id }
+        val preservedTracks = unique.map { track ->
+            val existing = existingMap[track.id]
+            if (existing != null) {
+                TrackMetadataGuard.merge(existing, track)
+            } else {
+                track
+            }
+        }
+        upsertTracks(preservedTracks)
+    }
+
+    @Query("SELECT * FROM tracks WHERE isFavorite = 1 ORDER BY favoriteAddedAt DESC")
+    fun getFavoriteTracksFlow(): Flow<List<TrackEntity>>
+
+    @Query("SELECT * FROM tracks WHERE isFavorite = 1 ORDER BY favoriteAddedAt DESC LIMIT :limit")
+    suspend fun getFavoriteTracksList(limit: Int = 20): List<TrackEntity>
+
+    @Query("SELECT isFavorite FROM tracks WHERE id = :id LIMIT 1")
+    fun isFavoriteFlow(id: String): Flow<Boolean?>
+
+    @Query("UPDATE tracks SET isFavorite = :isFavorite, favoriteAddedAt = :addedAt WHERE id = :id")
+    suspend fun setFavorite(id: String, isFavorite: Boolean, addedAt: Long? = if (isFavorite) System.currentTimeMillis() else null)
+
+    @Query("DELETE FROM tracks WHERE id = :id")
+    suspend fun deleteTrack(id: String)
+}
+
+data class PlaylistWithTracksTuple(
+    @Embedded
+    val playlist: PlaylistEntity,
+    @Relation(
+        parentColumn = "id",
+        entityColumn = "id",
+        associateBy = Junction(
+            value = PlaylistTrackCrossRef::class,
+            parentColumn = "playlistId",
+            entityColumn = "trackId"
+        )
+    )
+    val tracks: List<TrackEntity>
+)
+
+@Dao
+interface PlaylistDao {
+    @Upsert
+    suspend fun upsertPlaylist(playlist: PlaylistEntity)
+
+    @Query("UPDATE playlists SET createdAt = :createdAt WHERE id = :playlistId")
+    suspend fun setCreatedAt(playlistId: String, createdAt: Long)
+
+    @Query("UPDATE playlists SET title = :title, description = :description, coverUrl = :coverUrl WHERE id = :playlistId")
+    suspend fun updatePlaylist(playlistId: String, title: String, description: String?, coverUrl: String?)
+
+    @Query("SELECT * FROM playlists ORDER BY createdAt DESC")
+    fun getAllPlaylistsFlow(): Flow<List<PlaylistEntity>>
+
+    @Transaction
+    @Query("SELECT * FROM playlists ORDER BY createdAt DESC")
+    fun getAllPlaylistsWithTracksFlow(): Flow<List<PlaylistWithTracksTuple>>
+
+    @Query("SELECT * FROM playlists WHERE id = :playlistId LIMIT 1")
+    fun getPlaylistEntityFlow(playlistId: String): Flow<PlaylistEntity?>
+
+    @Query("SELECT * FROM playlists WHERE id = :playlistId LIMIT 1")
+    suspend fun getPlaylistEntity(playlistId: String): PlaylistEntity?
+
+    @Query("""
+        SELECT tracks.* FROM tracks 
+        INNER JOIN playlist_tracks ON tracks.id = playlist_tracks.trackId 
+        WHERE playlist_tracks.playlistId = :playlistId 
+        ORDER BY playlist_tracks.position ASC
+    """)
+    fun getOrderedTracksForPlaylistFlow(playlistId: String): Flow<List<TrackEntity>>
+
+    @Query("""
+        SELECT tracks.* FROM tracks 
+        INNER JOIN playlist_tracks ON tracks.id = playlist_tracks.trackId 
+        WHERE playlist_tracks.playlistId = :playlistId 
+        ORDER BY playlist_tracks.position ASC
+    """)
+    suspend fun getOrderedTracksForPlaylist(playlistId: String): List<TrackEntity>
+
+    @Transaction
+    @Query("SELECT * FROM playlists WHERE id = :playlistId LIMIT 1")
+    fun getPlaylistWithTracksFlow(playlistId: String): Flow<PlaylistWithTracksTuple?>
+
+    @Transaction
+    @Query("SELECT * FROM playlists WHERE id = :playlistId LIMIT 1")
+    suspend fun getPlaylistWithTracks(playlistId: String): PlaylistWithTracksTuple?
+
+    @Upsert
+    suspend fun insertCrossRef(ref: PlaylistTrackCrossRef)
+
+    @Upsert
+    suspend fun insertCrossRefs(refs: List<PlaylistTrackCrossRef>)
+
+    @Query("DELETE FROM playlist_tracks WHERE playlistId = :playlistId AND trackId = :trackId")
+    suspend fun removeTrackFromPlaylist(playlistId: String, trackId: String)
+
+    @Query("DELETE FROM playlist_tracks WHERE playlistId = :playlistId")
+    suspend fun clearPlaylistTracks(playlistId: String)
+
+    @Transaction
+    suspend fun replacePlaylistCrossRefs(playlistId: String, refs: List<PlaylistTrackCrossRef>) {
+        clearPlaylistTracks(playlistId)
+        insertCrossRefs(refs)
+    }
+
+    @Query("DELETE FROM playlists WHERE id = :playlistId")
+    suspend fun deletePlaylist(playlistId: String)
+}
+
+@Dao
+interface LibraryDao {
+    // Artists
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertArtist(artist: SavedArtistEntity)
+
+    @Query("SELECT * FROM saved_artists ORDER BY savedAt DESC")
+    fun getSavedArtistsFlow(): Flow<List<SavedArtistEntity>>
+
+    @Query("DELETE FROM saved_artists WHERE id = :id")
+    suspend fun deleteArtist(id: String)
+
+    @Query("SELECT EXISTS(SELECT 1 FROM saved_artists WHERE id = :id)")
+    fun isArtistSavedFlow(id: String): Flow<Boolean>
+
+    @Query("SELECT thumbnail FROM saved_artists WHERE LOWER(name) = LOWER(:name) AND thumbnail IS NOT NULL LIMIT 1")
+    suspend fun getSavedArtistThumbnail(name: String): String?
+
+    // Albums
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAlbum(album: SavedAlbumEntity)
+
+    @Query("SELECT * FROM saved_albums ORDER BY savedAt DESC")
+    fun getSavedAlbumsFlow(): Flow<List<SavedAlbumEntity>>
+
+    @Query("DELETE FROM saved_albums WHERE id = :id")
+    suspend fun deleteAlbum(id: String)
+
+    @Query("SELECT EXISTS(SELECT 1 FROM saved_albums WHERE id = :id)")
+    fun isAlbumSavedFlow(id: String): Flow<Boolean>
+}
+
+data class HistoryWithTrackTuple(
+    @Embedded
+    val history: HistoryEntity,
+    @Relation(
+        parentColumn = "trackId",
+        entityColumn = "id"
+    )
+    val track: TrackEntity
+)
+
+@Dao
+interface HistoryDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertHistory(history: HistoryEntity)
+
+    @Transaction
+    @Query("SELECT * FROM history ORDER BY playedAt DESC LIMIT 100")
+    fun getHistoryWithTracksFlow(): Flow<List<HistoryWithTrackTuple>>
+
+    @Transaction
+    @Query("SELECT * FROM history ORDER BY playedAt DESC LIMIT 100")
+    suspend fun getHistoryWithTracks(): List<HistoryWithTrackTuple>
+
+    @Transaction
+    @Query("""
+        SELECT * FROM history 
+        WHERE playedAt < :cutoffTimestamp 
+        ORDER BY playedAt ASC 
+        LIMIT :limit
+    """)
+    suspend fun getForgottenHistoryTracks(cutoffTimestamp: Long, limit: Int = 20): List<HistoryWithTrackTuple>
+
+    @Transaction
+    @Query("""
+        SELECT * FROM history 
+        WHERE playedAt >= :fromTimestamp 
+        ORDER BY playedAt DESC 
+        LIMIT :limit
+    """)
+    suspend fun getRecentHistoryTracks(fromTimestamp: Long, limit: Int = 30): List<HistoryWithTrackTuple>
+
+    @Query("DELETE FROM history WHERE trackId = :trackId")
+    suspend fun removeFromHistory(trackId: String)
+
+    @Query("DELETE FROM history")
+    suspend fun clearHistory()
+
+    @Query("DELETE FROM history WHERE trackId NOT IN (SELECT trackId FROM (SELECT trackId FROM history ORDER BY playedAt DESC LIMIT 100))")
+    suspend fun pruneHistoryToCap()
+}
+
+data class PlayCountWithTrackTuple(
+    @Embedded
+    val playCount: PlayCountEntity,
+    @Relation(
+        parentColumn = "trackId",
+        entityColumn = "id"
+    )
+    val track: TrackEntity
+)
+
+@Dao
+interface PlayCountDao {
+    @Query("SELECT * FROM play_counts WHERE trackId = :trackId LIMIT 1")
+    suspend fun getPlayCount(trackId: String): PlayCountEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertPlayCount(entity: PlayCountEntity)
+
+    @Transaction
+    @Query("SELECT * FROM play_counts ORDER BY count DESC LIMIT 100")
+    fun getTopPlayedTracksFlow(): Flow<List<PlayCountWithTrackTuple>>
+
+    @Transaction
+    @Query("SELECT * FROM play_counts")
+    suspend fun getAllPlayCounts(): List<PlayCountWithTrackTuple>
+
+    @Query("DELETE FROM play_counts")
+    suspend fun clearPlayCounts()
+}
+
+@Dao
+interface SearchHistoryDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertSearchQuery(entity: SearchHistoryEntity)
+
+    @Query("SELECT query FROM search_history ORDER BY timestamp DESC LIMIT 20")
+    fun getRecentQueriesFlow(): Flow<List<String>>
+
+    @Query("DELETE FROM search_history WHERE `query` = :query")
+    suspend fun deleteSearchQuery(query: String)
+
+    @Query("DELETE FROM search_history")
+    suspend fun clearSearchHistory()
+}
+
+@Dao
+interface LyricsDao {
+    @Query("DELETE FROM lyrics_cache WHERE provider = 'SPICY_LYRICS' AND (fetchedAtMs IS NULL OR fetchedAtMs <= :cutoff OR fetchedAtMs > :now)")
+    suspend fun purgeExpiredSpicy(cutoff: Long, now: Long)
+
+    @Query("SELECT * FROM lyrics_cache WHERE trackId = :trackId LIMIT 1")
+    suspend fun getLyrics(trackId: String): com.auralis.music.data.local.entity.LyricsEntity?
+
+    @Query(
+        """
+        SELECT * FROM lyrics_cache
+        WHERE trackName COLLATE NOCASE = :title COLLATE NOCASE
+          AND artistName COLLATE NOCASE = :artist COLLATE NOCASE
+          AND pipelineVersion = :pipelineVersion
+          AND (:durationMs <= 0 OR durationMs IS NULL OR ABS(durationMs - :durationMs) <= :durationToleranceMs)
+        ORDER BY hasWordTiming DESC,
+                 CASE syncType WHEN 'RICHSYNC' THEN 2 WHEN 'LINE_SYNC' THEN 1 ELSE 0 END DESC,
+                 CASE WHEN durationMs IS NULL OR :durationMs <= 0 THEN 1 ELSE 0 END ASC,
+                 ABS(COALESCE(durationMs, :durationMs) - :durationMs) ASC,
+                 cachedAt DESC
+        LIMIT 1
+        """
+    )
+    suspend fun getBestLyricsByMetadata(
+        title: String,
+        artist: String,
+        durationMs: Long,
+        pipelineVersion: Int,
+        durationToleranceMs: Long = 10_000L
+    ): com.auralis.music.data.local.entity.LyricsEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertLyrics(entity: com.auralis.music.data.local.entity.LyricsEntity)
+
+    @Query("DELETE FROM lyrics_cache WHERE trackId = :trackId")
+    suspend fun deleteLyrics(trackId: String)
+
+    @Query("DELETE FROM lyrics_cache")
+    suspend fun clearAllLyrics()
+
+    /**
+     * Drops rows produced by a different parser pipeline. Runs once per upgrade
+     * instead of clearing the whole table on every launch, so the cache actually
+     * survives a process restart.
+     */
+    @Query("DELETE FROM lyrics_cache WHERE pipelineVersion != :version")
+    suspend fun purgeStalePipeline(version: Int)
+
+    /**
+     * Safely and selectively drops only cached entries that lack genuine word timing
+     * (hasWordTiming == false) from older pipeline versions, allowing them to be
+     * upgraded by genuine word-sync providers, while leaving all existing valid
+     * genuine word-sync rows (hasWordTiming == true) completely untouched.
+     */
+    @Query("DELETE FROM lyrics_cache WHERE hasWordTiming = 0 AND pipelineVersion < :version")
+    suspend fun purgeStaleLineSync(version: Int)
+}
+
+@Dao
+interface NegativeLyricsDao {
+    @Query("SELECT * FROM negative_lyrics_cache WHERE trackKey = :trackKey LIMIT 1")
+    suspend fun getNegativeEntry(trackKey: String): com.auralis.music.data.local.entity.NegativeLyricsEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertNegativeEntry(entity: com.auralis.music.data.local.entity.NegativeLyricsEntity)
+
+    @Query("DELETE FROM negative_lyrics_cache WHERE trackKey = :trackKey")
+    suspend fun removeNegativeEntry(trackKey: String)
+
+    @Query("DELETE FROM negative_lyrics_cache WHERE cachedAt < :expiryTime")
+    suspend fun cleanExpired(expiryTime: Long)
+}

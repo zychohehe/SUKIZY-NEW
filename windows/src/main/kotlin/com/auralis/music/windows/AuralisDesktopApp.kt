@@ -1,0 +1,1062 @@
+package com.auralis.music.windows
+
+import androidx.compose.animation.core.VectorConverter
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import com.auralis.music.ui.components.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.outlined.PlaylistAdd
+import androidx.compose.material.icons.outlined.Forum
+import androidx.compose.material.icons.outlined.Groups
+import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.BarChart
+import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.material.icons.outlined.Explore
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.GridView
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import com.auralis.music.ui.components.handCursorRoot
+import androidx.compose.foundation.layout.offset
+import androidx.compose.animation.togetherWith
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import javax.imageio.ImageIO
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.sample
+import kotlinx.coroutines.flow.first
+
+enum class DesktopDestination(val label: String, val icon: ImageVector) {
+    HOME("Home", Icons.Outlined.Explore),
+    SEARCH("Search", Icons.Outlined.Search),
+    LIBRARY("Library", Icons.Outlined.GridView),
+    HISTORY("History", Icons.Outlined.History),
+    STATS("Stats", Icons.Outlined.BarChart),
+    WRAPPED("Wrapped", Icons.Outlined.AutoAwesome),
+    PROFILE("Profile", Icons.Outlined.AccountCircle),
+    SETTINGS("Settings", Icons.Outlined.Settings),
+    // Opened from the title bar, not listed in the sidebar.
+    IMPORT("Import playlists", Icons.Outlined.PlaylistAdd),
+    DISCORD("Discord", Icons.Outlined.Forum),
+}
+
+@Composable
+fun AuralisDesktopApp(
+    searchRepository: com.auralis.music.domain.repository.SearchRepository,
+    library: com.auralis.music.domain.repository.LibraryRepository,
+    history: com.auralis.music.domain.repository.HistoryRepository,
+    homePlatform: com.auralis.music.ui.viewmodel.HomePlatform,
+    libraryFlags: com.auralis.music.util.KeyValueStore,
+    stores: com.auralis.music.desktop.settings.DesktopDataStores,
+    playback: com.auralis.music.desktop.playback.DesktopPlaybackController?,
+    lyrics: com.auralis.music.desktop.lyrics.DesktopLyricsController?,
+    /** Main points the window's key handler here. */
+    onShortcutHandler: (((androidx.compose.ui.input.key.KeyEvent) -> Boolean)?) -> Unit = {},
+    selfTest: SelfTest? = null,
+    onSelfTestDone: (Boolean) -> Unit = {},
+    /** Discord status through the desktop Discord app; null when unavailable. */
+    discordControl: com.auralis.music.ui.settings.DiscordControl? = null,
+    listeningStats: com.auralis.music.desktop.library.DesktopListeningStats,
+    together: com.auralis.music.windows.together.DesktopTogether,
+    account: com.auralis.music.windows.profile.DesktopAccount,
+    titleBar: @Composable (TitleBarActions) -> Unit = {},
+    playerFullscreen: Boolean = false,
+    onPlayerFullscreen: (Boolean) -> Unit = {},
+    onOpenImmersive: () -> Unit = {},
+    /** Bumped when immersive mode steps back to the player. */
+    playerRequests: Int = 0,
+) {
+    var showPlayer by remember { mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(playerRequests) {
+        if (playerRequests > 0 && playback?.queue?.value?.current != null) showPlayer = true
+    }
+    var playerCoversHome by remember { mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(showPlayer) {
+        playerCoversHome = false
+        if (showPlayer) {
+            kotlinx.coroutines.delay(180L)
+            playerCoversHome = true
+        }
+    }
+    androidx.compose.runtime.LaunchedEffect(showPlayer) { onPlayerFullscreen(showPlayer) }
+    androidx.compose.runtime.LaunchedEffect(playback) {
+        val pb = playback ?: return@LaunchedEffect
+        var last = pb.session.value
+        pb.session.collect { session ->
+            if (session != last && com.auralis.music.windows.settings.DesktopPreferences.store.bool("openPlayer")) showPlayer = true
+            last = session
+        }
+    }
+    var playerPanel by remember { mutableStateOf(com.auralis.music.windows.player.PlayerPanel.LYRICS) }
+    var searchFocusRequests by remember { mutableStateOf(0) }
+    var typing by remember { mutableStateOf(false) }
+    var destination by remember { mutableStateOf(DesktopDestination.HOME) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val searchState = remember { com.auralis.music.windows.search.DesktopSearchState(searchRepository, scope) { !stores.privacy.settingsFlow.first().pauseSearchHistory } }
+    val browse = remember { com.auralis.music.desktop.browse.DesktopBrowseState(searchRepository, scope) }
+    val languageChanges by com.auralis.music.data.network.ContentSettingsSource.languageChanges.collectAsState()
+    androidx.compose.runtime.LaunchedEffect(languageChanges) {
+        if (languageChanges > 0) {
+            browse.clearCache()
+            searchState.clearCache()
+        }
+    }
+    val navigation = remember { DesktopNavigation() }
+    val browsePages = browse.stack.toList()
+    androidx.compose.runtime.LaunchedEffect(destination, browsePages, searchState.submittedQuery) {
+        navigation.record(DesktopRoute(destination, browsePages, if (destination == DesktopDestination.SEARCH) searchState.submittedQuery else null))
+    }
+    fun restoreRoute(route: DesktopRoute?) {
+        if (route == null) return
+        showPlayer = false
+        destination = route.destination
+        if (route.destination == DesktopDestination.SEARCH && route.searchQuery != null &&
+            (!searchState.hasSubmitted || searchState.query != route.searchQuery)) {
+            searchState.search(route.searchQuery, recordHistory = false)
+        }
+        browse.stack.clear()
+        val last = route.pages.lastOrNull()
+        when {
+            last is com.auralis.music.desktop.browse.BrowsePage.Album && last.isLoading -> {
+                browse.stack.addAll(route.pages.dropLast(1))
+                browse.openAlbum(last.album)
+            }
+            last is com.auralis.music.desktop.browse.BrowsePage.Artist && last.isLoading -> {
+                browse.stack.addAll(route.pages.dropLast(1))
+                browse.openArtist(last.page.artist)
+            }
+            else -> browse.stack.addAll(route.pages)
+        }
+    }
+    fun previousPage() {
+        val previous = navigation.back()
+        if (previous != null) restoreRoute(previous)
+        else {
+            browse.clear()
+            destination = DesktopDestination.HOME
+        }
+    }
+    // Register before page handlers: nested pages and dialogs get the first chance to go back.
+    com.auralis.music.ui.components.PlatformBackHandler(
+        enabled = navigation.canGoBack || destination != DesktopDestination.HOME,
+        onBack = ::previousPage
+    )
+    val accountState by account.state.collectAsState()
+    val youtubeSignedIn by com.auralis.music.data.network.YouTubeSession.signedIn.collectAsState()
+    val youtubeLabel by com.auralis.music.data.network.YouTubeSession.accountLabel.collectAsState()
+    val youtubeLibrary = remember { com.auralis.music.windows.profile.DesktopYouTubeLibrary(scope) }
+    var syncPlaylistId by remember { mutableStateOf<String?>(null) }
+    var createdSyncPlaylistId by remember { mutableStateOf<String?>(null) }
+    val playlistSync = remember(library, youtubeLibrary) {
+        val syncStore = com.auralis.music.data.playlistsync.PlaylistSyncStore(
+            com.auralis.music.util.PropertiesFileKeyValueStore(java.io.File(com.auralis.music.util.desktopAppDataDir(), "playlist-sync.properties"), synchronous = true))
+        com.auralis.music.data.playlistsync.PlaylistSyncEngine(library, syncStore, mapOf(
+            com.auralis.music.data.playlistsync.SyncService.YOUTUBE to youtubeLibrary.playlistSyncRemote(),
+            com.auralis.music.data.playlistsync.SyncService.SPOTIFY to com.auralis.music.data.playlistsync.SpotifyPlaylistSync()))
+    }
+    androidx.compose.runtime.LaunchedEffect(playlistSync) { playlistSync.start(scope) }
+    val youtubeState by youtubeLibrary.state.collectAsState()
+    val youtubeSessionRevision by com.auralis.music.data.network.YouTubeSession.revision.collectAsState()
+    androidx.compose.runtime.LaunchedEffect(youtubeSessionRevision) { youtubeLibrary.refresh() }
+    var showSignIn by remember { mutableStateOf(false) }
+    var showCreatePlaylist by remember { mutableStateOf(false) }
+    var playlistCreationRequest by remember { mutableStateOf(com.auralis.music.ui.library.PlaylistCreationRequest()) }
+    val importSyncChoice = remember { com.auralis.music.ui.library.ImportSyncChoice() }
+    var showTogether by remember { mutableStateOf(false) }
+    var showDiscord by remember { mutableStateOf(false) }
+    var showImport by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
+    var showYouTubeAccounts by remember { mutableStateOf(false) }
+    // Bumped by the title bar's refresh: the current page is rebuilt, re-running all its loads.
+    var refreshTick by remember { mutableStateOf(0) }
+    /** Each main page's saved state (its scroll position, for one) while another page is shown. */
+    val pageStates = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
+    var youtubePageAccount by remember { mutableStateOf<String?>(null) }
+    var youtubePageId by remember { mutableStateOf<String?>(null) }
+    // Albums & singles that follow what the listener plays (see TasteReleases).
+    // Background lookups queue behind one paced gate (a launch burst got the network blocked).
+    val backgroundSearch = remember(searchRepository) { com.auralis.music.windows.home.PacedSearchRepository(searchRepository) }
+    // Artists followed from a song's credits (and some imports) are saved without a photo, so the
+    // Library showed a blank avatar for them: fill each one in once from its artist page.
+    androidx.compose.runtime.LaunchedEffect(library, backgroundSearch) {
+        val tried = mutableSetOf<String>()
+        library.getSavedArtists().collect { saved ->
+            saved.filter { it.thumbnail.isNullOrBlank() && it.id.startsWith("UC") && tried.add(it.id) }.forEach { artist ->
+                val photo = runCatching {
+                    backgroundSearch.getArtistPage(com.auralis.music.domain.model.Artist(artist.id, artist.name))?.artist?.thumbnail
+                }.getOrNull()
+                if (!photo.isNullOrBlank()) {
+                    // Re-read so an artist removed meanwhile isn't added back.
+                    library.getSavedArtists().first().firstOrNull { it.id == artist.id && it.thumbnail.isNullOrBlank() }
+                        ?.let { library.saveArtist(it.copy(thumbnail = photo)) }
+                }
+            }
+        }
+    }
+    val tasteReleases = remember { com.auralis.music.windows.home.TasteReleases(listeningStats, backgroundSearch, scope).also { it.start() } }
+    val tasteShelf by tasteReleases.shelf.collectAsState()
+    // Quick picks: most played in the last 30 days (all time when that's too few), by plays then time.
+    val allListens by listeningStats.listens.collectAsState()
+    val quickPicks = remember(allListens) {
+        fun ranked(listens: List<com.auralis.music.desktop.library.DesktopListeningStats.Listen>) =
+            listens.groupBy { com.auralis.music.desktop.library.DesktopListeningStats.songKey(it.track) }.values
+                .sortedWith(compareByDescending<List<com.auralis.music.desktop.library.DesktopListeningStats.Listen>> { l -> l.count { it.countsAsPlay } }
+                    .thenByDescending { l -> l.sumOf { it.timeMs } })
+                .map { l -> l.groupBy { it.track.id }.values.maxBy { v -> v.sumOf { it.timeMs } }.first().track }
+        val recent = ranked(allListens.filter { it.startedAt >= System.currentTimeMillis() - 30L * 86_400_000L })
+        (if (recent.size >= 12) recent else (recent + ranked(allListens)).distinctBy { it.id }).take(12)
+    }
+    // Familiar Artists (Li Music): top artists by the listener's own play count, with their photo
+    // and channel. Portraits load independently of YouTube and successful lookups survive restarts.
+    val artistLookups = remember { androidx.compose.runtime.mutableStateMapOf<String, com.auralis.music.domain.model.Artist?>() }
+    val blockedArtists by com.auralis.music.desktop.library.DesktopBlockedArtists.artists.collectAsState()
+    val topArtistCandidates = remember(allListens, blockedArtists) {
+        val stats = com.auralis.music.windows.home.eligibleFamiliarArtistStats(com.auralis.music.windows.home.computeFamiliarArtistStats(
+            listens = allListens,
+            blockedTracks = { com.auralis.music.desktop.library.DesktopBlockedArtists.blocksTrack(it, blockedArtists) }
+        ))
+        com.auralis.music.windows.home.rankFamiliarArtistStats(stats)
+            .distinctBy { com.auralis.music.domain.search.SearchQueryMatcher.normalize(it.name) }
+            .take(20)
+    }
+    val artistLookup = remember {
+        val portraits = com.auralis.music.windows.home.DesktopArtistPortraits(
+            java.io.File(com.auralis.music.util.desktopAppDataDir(), "cache/verified-artist-portraits"))
+        com.auralis.music.windows.home.FamiliarArtistLookup(
+            com.auralis.music.util.PropertiesFileKeyValueStore(java.io.File(com.auralis.music.util.desktopAppDataDir(), "cache/artist-portraits.properties")),
+            portraits::musicArtists, portraits::localPhoto)
+    }
+    androidx.compose.runtime.LaunchedEffect(topArtistCandidates.map { it.name }) {
+        topArtistCandidates.forEach { stat ->
+            val name = stat.name
+            artistLookup.cached(name)?.let { artistLookups[name] = it }
+            launch {
+                while (true) {
+                    artistLookup.resolve(name) { artistLookups[name] = it }
+                    val found = artistLookups[name]
+                    if (!found?.id.isNullOrBlank() && !found?.thumbnail.isNullOrBlank()) break
+                    kotlinx.coroutines.delay(60_000L)
+                }
+            }
+        }
+    }
+    val familiarArtists = topArtistCandidates.map { stat ->
+        val found = artistLookups[stat.name]
+        com.auralis.music.windows.home.FamiliarArtist(
+            name = found?.name ?: stat.name,
+            plays = stat.totalPlays,
+            id = found?.id.orEmpty(),
+            photo = found?.thumbnail,
+            subscribers = found?.subscribers,
+            recentPlays = stat.recentPlays,
+            weekPlays = stat.weekPlays,
+            totalPlays = stat.totalPlays,
+            patternScore = stat.patternScore,
+            lastPlayedAt = stat.lastPlayedAt,
+            listenedMs = stat.listenedMs
+        )
+    }.filterNot { com.auralis.music.desktop.library.DesktopBlockedArtists.blocksArtist(it.id.ifBlank { null }, it.name, blockedArtists) }
+    val homeAccountPresentation = remember { com.auralis.music.windows.home.HomeAccountPresentation() }
+    val homeViewModel = remember {
+        com.auralis.music.ui.viewmodel.HomeViewModel(
+            historyRepository = history,
+            searchRepository = backgroundSearch,
+            platform = homePlatform,
+            libraryRepository = library
+        )
+    }
+    val snackbar = remember { androidx.compose.material3.SnackbarHostState() }
+    val showUnavailable: (String) -> Unit = { message ->
+        scope.launch { snackbar.currentSnackbarData?.dismiss(); snackbar.showSnackbar(message) }
+    }
+    fun openYouTubePlaylist(playlist: com.auralis.music.domain.model.PlaylistResult) {
+        showPlayer = false
+        youtubePageAccount = youtubeState.activeId
+        youtubePageId = playlist.id
+        val expectedAccount = youtubeState.activeId
+        var page = com.auralis.music.desktop.browse.BrowsePage.Album(playlist)
+        browse.stack += page
+        fun update(tracks: List<com.auralis.music.domain.model.Track>) {
+            if (youtubeLibrary.state.value.activeId != expectedAccount) return
+            val index = browse.stack.indexOfFirst { it === page }
+            if (index >= 0) {
+                page = page.copy(tracks = tracks, isLoading = false)
+                browse.stack[index] = page
+            }
+        }
+        scope.launch {
+            try {
+                val tracks = youtubeLibrary.tracks(playlist) { partial -> scope.launch { update(partial) } }
+                update(tracks)
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (_: Exception) { update(page.tracks); showUnavailable("Couldn't finish loading this YouTube playlist. Try opening it again.") }
+        }
+    }
+    androidx.compose.runtime.LaunchedEffect(youtubeState.activeId) {
+        if (youtubePageAccount != null && youtubePageAccount != youtubeState.activeId &&
+            (browse.top as? com.auralis.music.desktop.browse.BrowsePage.Album)?.album?.id == youtubePageId) browse.clear()
+    }
+    androidx.compose.runtime.LaunchedEffect(playback) { playback?.errors?.collect { showUnavailable(it) } }
+    androidx.compose.runtime.LaunchedEffect(together) {
+        together.state.map { it.message }.distinctUntilChanged().collect { message -> message?.let { showUnavailable(it) } }
+    }
+    val platformActions = remember { com.auralis.music.ui.components.DesktopPlatformActions(showUnavailable) }
+    val libraryViewModel = remember {
+        com.auralis.music.ui.viewmodel.LibraryViewModel(
+            libraryRepository = library,
+            historyRepository = history,
+            statsRepository = com.auralis.music.desktop.library.DesktopStatsRepository(listeningStats),
+            platform = com.auralis.music.desktop.library.DesktopLibraryPlatform(libraryFlags, showUnavailable)
+        )
+    }
+    // Signing in with the phone's Auralis account brings its playlists, likes and stats here;
+    // the title bar's refresh pulls again.
+    androidx.compose.runtime.LaunchedEffect(accountState.profile?.uid, refreshTick) {
+        if (accountState.profile?.uid.isNullOrBlank()) return@LaunchedEffect
+        try {
+            // Normal startup sync is silent; actionable failures are logged below.
+            account.pullCloudBackup(library, listeningStats, history)
+            libraryViewModel.refresh()
+            // Then send this PC's side: the merged library, and listens measured here.
+            account.pushLibrary(library)
+            account.pushListens(listeningStats)
+        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+        catch (e: Exception) { com.auralis.music.util.Log.w("AccountSync", "Couldn't sync with the account: ${e.message}") }
+    }
+    // Signing out removes what the account brought here (its playlists and liked songs); what
+    // was imported on this PC stays. The previous account is remembered to know whose to remove.
+    var syncedUid by remember { mutableStateOf(accountState.profile?.uid) }
+    androidx.compose.runtime.LaunchedEffect(accountState.profile?.uid) {
+        val uid = accountState.profile?.uid?.takeIf { it.isNotBlank() }
+        val previous = syncedUid
+        syncedUid = uid
+        if (uid == null && previous != null) {
+            history.setHistoryAccount(null)
+            val removed = runCatching { account.removeAccountItems(previous, library) }.getOrDefault(0)
+            libraryViewModel.refresh()
+            if (removed > 0) showUnavailable("Signed out: removed $removed playlists that came from your account")
+        }
+    }
+    // While signed in, keep the account current: library edits a few seconds after they happen,
+    // listening within about 20 seconds, and the phone's new listening each minute.
+    androidx.compose.runtime.LaunchedEffect(accountState.profile?.uid) {
+        if (accountState.profile?.uid.isNullOrBlank()) return@LaunchedEffect
+        launch {
+            kotlinx.coroutines.flow.combine(library.getPlaylists(), library.getFavoriteTracks(),
+                library.getSavedAlbums(), library.getSavedArtists()) { a, b, c, d -> listOf<Any>(a, b, c, d) }
+                .distinctUntilChanged()
+                .collectLatest {
+                    kotlinx.coroutines.delay(5_000)
+                    runCatching { account.pushLibrary(library) }
+                        .onFailure { com.auralis.music.util.Log.w("AccountSync", "Library upload failed: ${it.message}") }
+                }
+        }
+        launch {
+            // The recorder saves every 5 s while playing, so sample rather than debounce.
+            @OptIn(kotlinx.coroutines.FlowPreview::class)
+            listeningStats.listens.sample(20_000).collect {
+                runCatching { account.pushListens(listeningStats) }
+                    .onFailure { com.auralis.music.util.Log.w("AccountSync", "Listening upload failed: ${it.message}") }
+            }
+        }
+        while (true) {
+            kotlinx.coroutines.delay(60_000)
+            runCatching { account.pullNewListens(listeningStats, history) }
+                .onFailure { com.auralis.music.util.Log.w("AccountSync", "Listening check failed: ${it.message}") }
+        }
+    }
+    // The song options sheet, for song rows that hand their menu to the window (search, playlists).
+    var menuTrack by remember { mutableStateOf<com.auralis.music.domain.model.Track?>(null) }
+    val queue = playback?.queue?.collectAsState()?.value
+    val playerState = playback?.state?.collectAsState()?.value
+    val canShowPlayer = playback != null && lyrics != null && queue?.current != null
+
+    val actions = remember(playback) {
+        object : ShortcutActions {
+            override fun togglePlayPause() { playback?.togglePlayPause() }
+            override fun next() { playback?.next() }
+            override fun previous() { playback?.previous() }
+            override fun seekBy(deltaMs: Long) { playback?.seekBy(deltaMs) }
+            override fun volumeBy(delta: Float) { playback?.volumeBy(delta) }
+            override fun toggleMute() { playback?.toggleMute() }
+            override fun focusSearch() {
+                showPlayer = false
+                searchFocusRequests++
+            }
+            override fun togglePlayer() { showPlayer = !showPlayer && playback?.queue?.value?.current != null }
+            override fun showLyrics() = openPanel(com.auralis.music.windows.player.PlayerPanel.LYRICS)
+            override fun showQueue() = openPanel(com.auralis.music.windows.player.PlayerPanel.QUEUE)
+            private fun openPanel(panel: com.auralis.music.windows.player.PlayerPanel) {
+                if (playback?.queue?.value?.current == null) return
+                playerPanel = panel
+                showPlayer = true
+            }
+            override fun closePlayer(): Boolean {
+                return handleEscapeBack(showPlayer) { showPlayer = false }
+            }
+            override fun openImmersive() = onOpenImmersive()
+        }
+    }
+    if (selfTest != null) {
+        androidx.compose.runtime.LaunchedEffect(selfTest) {
+            val passed = selfTest.run(searchState, playback, lyrics, openPlayer = { showPlayer = true })
+            onSelfTestDone(passed)
+        }
+    }
+    // The player covers the search field, so it must not keep the keyboard.
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    androidx.compose.runtime.LaunchedEffect(showPlayer) { if (showPlayer) focusManager.clearFocus() }
+    val currentTyping = androidx.compose.runtime.rememberUpdatedState(typing && !showPlayer)
+    androidx.compose.runtime.DisposableEffect(actions) {
+        onShortcutHandler { event -> handleShortcut(event, currentTyping.value, actions) }
+        onDispose { onShortcutHandler(null) }
+    }
+
+    val appearance by stores.appearance.settingsFlow.collectAsState(stores.appearance.getInitialSettings())
+    // One-time move to Spicy Lyrics' player (asked for on 2026-10-11): the Dynamic background and
+    // left-aligned lyrics. Later choices in Appearance are kept.
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        if (libraryFlags.getString("spicy_player_defaults", "0") != "1") {
+            val current = stores.appearance.settingsFlow.first()
+            stores.appearance.updateSettings(current.copy(playerBackgroundStyle = "Dynamic", lyricsTextPosition = "Left"))
+            libraryFlags.putStrings(mapOf("spicy_player_defaults" to "1"))
+        }
+
+    }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        destination = when (stores.appearance.settingsFlow.first().defaultOpenTab) {
+            "Search" -> DesktopDestination.SEARCH
+            "Library" -> DesktopDestination.LIBRARY
+            else -> DesktopDestination.HOME
+        }
+    }
+    val settingsPlatform = remember(playback) {
+        com.auralis.music.windows.settings.DesktopSettingsPlatform(playback, history, searchRepository, discord = discordControl)
+    }
+    val backgroundLibrary by libraryViewModel.uiState.collectAsState()
+    val playlistCover = when (val page = browse.top) {
+        is com.auralis.music.desktop.browse.BrowsePage.Album -> page.album.thumbnail
+            ?: page.tracks.firstOrNull { !it.thumbnail.isNullOrBlank() }?.thumbnail
+        null -> if (destination == DesktopDestination.LIBRARY) backgroundLibrary.selectedPlaylist?.let { playlist ->
+            playlist.coverUrl?.takeIf { it.isNotBlank() }
+                ?: playlist.tracks.firstOrNull { !it.thumbnail.isNullOrBlank() }?.thumbnail
+        } else null
+        else -> null
+    }
+    // Artwork backgrounds are always active, independent of the selected theme mode.
+    val lastSession = remember { com.auralis.music.windows.player.DesktopPlaybackSessionStore.currentSession() }
+    val currentTrackArtwork = queue?.current?.thumbnail?.takeIf { it.isNotBlank() }
+        ?: queue?.current?.id?.takeIf { it.length in 8..15 && !it.startsWith("local:") }?.let { "https://i.ytimg.com/vi/$it/hq720.jpg" }
+    val backgroundArtwork = currentTrackArtwork
+        ?: playlistCover
+        ?: lastSession?.artworkUrl
+    val artworkPalette = com.auralis.music.windows.settings.rememberArtworkPalette(backgroundArtwork ?: currentTrackArtwork)
+    // Prepare the dynamic player's texture while browsing, before the player is opened.
+    com.auralis.music.windows.player.rememberAuraCover(backgroundArtwork)
+    val initialSidebars = remember { SidebarLayoutPreferences.load() }
+    var leftSidebarWidth by remember { mutableStateOf(initialSidebars.left) }
+    var rightSidebarWidth by remember { mutableStateOf(initialSidebars.right) }
+    var leftCollapsed by remember { mutableStateOf(initialSidebars.leftCollapsed) }
+    val navigationScroll = androidx.compose.foundation.rememberScrollState()
+    // The Your Library row last opened, highlighted while its page shows.
+    var selectedLibraryKey by remember { mutableStateOf<String?>(null) }
+    // The playlist whose options are open (right-click in Your Library).
+    var playlistMenu by remember { mutableStateOf<com.auralis.music.domain.model.Playlist?>(null) }
+    var rightCollapsed by remember { mutableStateOf(initialSidebars.rightCollapsed) }
+    // The right panel shows Now playing, or lyrics / the queue from the player bar's buttons.
+    var sidePanel by remember { mutableStateOf(com.auralis.music.windows.player.SidePanel.NOW_PLAYING) }
+    var resizingLeft by remember { mutableStateOf(false) }
+    var resizingRight by remember { mutableStateOf(false) }
+    /** The Up Next card's size while it shows (zero when there is none); the left panel wraps it. */
+    var upNextSize by remember { mutableStateOf(androidx.compose.ui.unit.DpSize.Zero) }
+    var currentLeftSidebarWidth by remember { mutableStateOf((if (initialSidebars.leftCollapsed) 64f else initialSidebars.left).dp) }
+    androidx.compose.runtime.LaunchedEffect(leftSidebarWidth, rightSidebarWidth, leftCollapsed, rightCollapsed) {
+        kotlinx.coroutines.delay(400)
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            SidebarLayoutPreferences.save(SidebarLayout(leftSidebarWidth, rightSidebarWidth, leftCollapsed, rightCollapsed))
+        }
+    }
+    val nativeDensity = androidx.compose.ui.platform.LocalDensity.current
+    val desktopPreferenceRevision by com.auralis.music.windows.settings.DesktopPreferences.store.changes.collectAsState()
+    val densityScale = (when (appearance.displayDensity) { "Compact (85%)" -> 0.85f; "Large (115%)" -> 1.15f; else -> 1f }) *
+        com.auralis.music.windows.settings.DesktopPreferences.store.number("zoom",1.0).toFloat().coerceIn(.75f,1.5f)
+    com.auralis.music.ui.theme.AuralisDesktopTheme(appearanceSettings = appearance, artworkPalette = artworkPalette, platformActions = platformActions) {
+    com.auralis.music.windows.settings.DesktopThemeOverrides {
+    val shortcutPinIds by remember(homeViewModel) { homeViewModel.uiState.map { it.pinnedSpeedDialIds }.distinctUntilChanged() }.collectAsState(emptySet())
+    val popupGlass = rememberPopupGlassSource()
+    var showLyricsProviders by remember { mutableStateOf(false) }
+    val menuInvocation = remember { com.auralis.music.windows.library.MenuInvocationAnchor() }
+    com.auralis.music.windows.player.ArtworkAppBackground(backgroundArtwork, artworkPalette,
+        modifier = Modifier.recordPopupGlass(popupGlass).then(com.auralis.music.windows.library.menuInvocationRecorder(menuInvocation))) {
+    androidx.compose.runtime.CompositionLocalProvider(
+        LocalPopupGlassSource provides popupGlass,
+        com.auralis.music.ui.lyrics.LocalLyricsProviderPicker provides
+            if (lyrics != null) ({ showLyricsProviders = true }) else null,
+        com.auralis.music.ui.library.LocalPlaylistCreation provides { request -> playlistCreationRequest = request; showCreatePlaylist = true },
+        com.auralis.music.ui.library.LocalImportSyncChoice provides importSyncChoice,
+        com.auralis.music.windows.player.LocalPlayerPlaylists provides library,
+        com.auralis.music.ui.library.LocalPlaylistSync provides { playlist -> syncPlaylistId = playlist.id },
+        com.auralis.music.ui.components.LocalGlassDialogHost provides { dismiss, content -> GlassDialog(dismiss, content) },
+        com.auralis.music.windows.library.LocalMenuInvocationAnchor provides menuInvocation,
+        androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(nativeDensity.density * densityScale, nativeDensity.fontScale),
+        com.auralis.music.data.datastore.LocalSettingsStores provides stores,
+        com.auralis.music.ui.settings.LocalSettingsPlatform provides settingsPlatform,
+        com.auralis.music.ui.theme.LocalAppearanceSettingsStore provides stores.appearance,
+        // Spotify sign-in reads the session from the user's own browser (no embedded browser here).
+        com.auralis.music.ui.library.LocalPlaylistShortcutActions provides remember(shortcutPinIds) {
+            com.auralis.music.ui.library.PlaylistShortcutActions(
+                isPinned = { homeViewModel.isAlbumPinned(com.auralis.music.windows.library.playlistShortcutTarget(it).id) },
+                toggle = { homeViewModel.togglePinAlbum(com.auralis.music.windows.library.playlistShortcutTarget(it)) })
+        },
+        com.auralis.music.ui.screens.LocalWebSignIn provides remember {
+            com.auralis.music.ui.screens.WebSignIn(spotifySignIn = { signedIn, dismiss ->
+                com.auralis.music.windows.profile.DesktopSpotifySignIn(signedIn, dismiss)
+            })
+        },
+        com.auralis.music.ui.components.LocalTrackLinks provides com.auralis.music.ui.components.TrackLinks(
+            openArtist = { name -> showPlayer = false; browse.openArtist(com.auralis.music.domain.model.Artist(id = "", name = name)) },
+            openAlbum = { track -> showPlayer = false; browse.openTrackAlbum(track) { showUnavailable("Couldn't find that album") } }
+        ),
+        // Song, album and playlist options: the phone's sheets, as a glass menu at the right-click or ⋮.
+        com.auralis.music.ui.components.LocalOptionsSheetHost provides { dismiss, content ->
+            com.auralis.music.windows.library.OptionsMenuPopup(dismiss, content = content)
+        }
+    ) {
+        val syncPlaylists by library.getPlaylists().collectAsState(emptyList())
+        androidx.compose.runtime.SideEffect {
+            importSyncChoice.changed = { libraryViewModel.syncOnImport = it }
+            libraryViewModel.onPlaylistImported = { id ->
+                try { playlistSync.enable(id) }
+                catch (e: kotlinx.coroutines.CancellationException) { throw e }
+                catch (e: Exception) { showUnavailable("Imported. Sync could not start: ${e.message}") }
+            }
+        }
+        syncPlaylists.firstOrNull { it.id == syncPlaylistId }?.let { playlist ->
+            com.auralis.music.ui.library.PlaylistSyncDialog(playlist, playlistSync) { syncPlaylistId = null }
+        }
+        if (showLyricsProviders && lyrics != null)
+            com.auralis.music.windows.player.LyricsProviderPicker(lyrics) { showLyricsProviders = false }
+        if (showImport) GlassDialog({ showImport = false }) {
+            val libraryState by libraryViewModel.uiState.collectAsState()
+            com.auralis.music.ui.screens.ImportPlaylistsScreen(
+                onDismiss = { showImport = false },
+                onNavigateToYouTubeAccount = { showSignIn = true },
+                onImportYouTubeLibraryPlaylists = libraryViewModel::importYouTubeLibraryPlaylists,
+                isImportingYouTube = libraryState.isImporting,
+                youtubeImportMessage = libraryState.importMessage,
+                onClearYouTubeImportMessage = libraryViewModel::clearYouTubeImportMessage,
+                onImportYouTubePlaylist = libraryViewModel::importYouTubePlaylist,
+                onImportSpotifyPlaylist = { libraryViewModel.importSpotifyPlaylist(it) },
+                onImportSpotifyLibraryPlaylists = libraryViewModel::importSpotifyLibraryPlaylists,
+                isImportingSpotify = libraryState.isImportingSpotify,
+                spotifyImportMessage = libraryState.spotifyImportMessage,
+                onClearSpotifyImportMessage = libraryViewModel::clearSpotifyImportMessage,
+                compact = true)
+        }
+        if (showDiscord) com.auralis.music.windows.discord.DiscordSettingsPopup(
+            discordControl as? com.auralis.music.windows.discord.WindowsDiscordPresence) { showDiscord = false }
+        if (showSettings) com.auralis.music.windows.settings.DesktopSettingsDialog(
+            stores = stores,
+            history = history,
+            search = searchRepository,
+            hasActiveTrack = queue?.current != null,
+            discordControl = discordControl,
+            onDismiss = { showSettings = false }
+        )
+        if (showTogether) com.auralis.music.windows.together.ListenTogetherDialog(together,
+            defaultName = (if (youtubeSignedIn) youtubeState.identity?.name?.takeIf { it.isNotBlank() } else null)
+                ?: accountState.profile?.displayName?.takeIf { it.isNotBlank() }) { showTogether = false }
+        if (showCreatePlaylist) com.auralis.music.ui.library.PlaylistCreationDialog(library, playlistSync, playlistCreationRequest,
+            onDismiss = { showCreatePlaylist = false; playlistCreationRequest = com.auralis.music.ui.library.PlaylistCreationRequest() },
+            onCreated = { created ->
+                if (playlistCreationRequest.tracks.isEmpty() && playlistCreationRequest.onCreated == null) {
+                    browse.clear(); showPlayer = false
+                    libraryViewModel.selectPlaylist(created.id, created)
+                    destination = DesktopDestination.LIBRARY
+                }
+                showCreatePlaylist = false; playlistCreationRequest = com.auralis.music.ui.library.PlaylistCreationRequest()
+                showUnavailable("Playlist created")
+            })
+        if (showSignIn) com.auralis.music.windows.profile.DesktopSignInDialog(account,
+            onConnected = { youtubeLibrary.refresh(force = true) },
+            onDisconnected = { youtubeLibrary.signOut() }) { showSignIn = false }
+        // Blur the actual page beneath sign-in, rather than letting crisp rows show through
+        // its translucent surface. No screenshot/readback is needed to open the dialog.
+        // The hand cursor over anything clickable (each control reports its hover; see HandCursor).
+        Surface(modifier = Modifier.fillMaxSize().handCursorRoot().then(
+            if (showSignIn) Modifier.blur(18.dp) else Modifier
+        ), color = MaterialTheme.colorScheme.background) {
+            Column(Modifier.fillMaxSize().drawWithContent {
+                // Preserve Home's state/scroll position, but don't redraw its
+                // artwork, aura and second lyric renderer behind an opaque player.
+                if (!playerCoversHome) drawContent()
+            }) {
+                Box(com.auralis.music.windows.dev.perfSkip("titlebar")) {
+                titleBar(TitleBarActions(
+                    canGoBack = showPlayer || navigation.canGoBack,
+                    canGoForward = navigation.canGoForward,
+                    back = { if (showPlayer) showPlayer = false else restoreRoute(navigation.back()) },
+                    forward = { restoreRoute(navigation.forward()) },
+                    refresh = {
+                        refreshTick++
+                        when (val page = browse.top) {
+                            is com.auralis.music.desktop.browse.BrowsePage.Artist -> browse.retryArtist()
+                            is com.auralis.music.desktop.browse.BrowsePage.Album -> {
+                                browse.pop()
+                                if (youtubeState.playlists.any { it.id == page.album.id }) openYouTubePlaylist(page.album)
+                                else browse.openAlbum(page.album)
+                            }
+                            null -> when (destination) {
+                                DesktopDestination.SEARCH -> if (searchState.query.isNotBlank()) searchState.search(searchState.query)
+                                DesktopDestination.LIBRARY -> scope.launch { libraryViewModel.refresh() }
+                                DesktopDestination.HOME -> homeViewModel.refresh()
+                                else -> Unit
+                            }
+                        }
+                    },
+                    accountLabel = if (youtubeSignedIn) youtubeState.identity?.name ?: "YouTube Music" else accountState.profile?.displayName?.takeIf { it.isNotBlank() } ?: "Sign in",
+                    accountAvatar = if (youtubeSignedIn) youtubeState.identity?.avatar else null,
+                    accountMenu = {
+                        com.auralis.music.windows.profile.YouTubeAccountMenu(expanded = showYouTubeAccounts, state = youtubeState,
+                            onSelect = { youtubeLibrary.switchAccount(it); showYouTubeAccounts = false },
+                            onRemove = youtubeLibrary::removeAccount,
+                            onAdd = { showYouTubeAccounts = false; showSignIn = true },
+                            onSettings = { showYouTubeAccounts = false; showSettings = true },
+                            onRefresh = { youtubeLibrary.refresh(force = true) }, onDismiss = { showYouTubeAccounts = false })
+                    },
+                    openAccount = { if (youtubeSignedIn) showYouTubeAccounts = true else showSignIn = true },
+                    openTogether = { showTogether = true },
+                    openSettings = { showSettings = true },
+                    search = {
+                        com.auralis.music.windows.search.FindMusicDropdown(
+                            bar = true,
+                            focusRequests = searchFocusRequests,
+                            state = searchState,
+                            currentTrackId = queue?.current?.id,
+                            isPlaying = playerState == com.auralis.music.desktop.playback.VlcAudioPlayer.State.PLAYING,
+                            onPlay = { track, _ -> playback?.playSingle(track) ?: showUnavailable("Playback needs VLC (64-bit)") },
+                            onSearch = { query -> searchState.search(query); showPlayer = false; browse.clear(); destination = DesktopDestination.SEARCH },
+                            onPlayNext = { playback?.playNext(it) },
+                            onAddToQueue = { playback?.addToQueue(it) },
+                            onMenuClick = { menuTrack = it },
+                            onTypingChange = { typing = it },
+                            liquidify = true,
+                            artwork = queue?.current?.thumbnail
+                        )
+                    },
+                    openImport = { showImport = true },
+                    openDiscord = { showDiscord = true },
+                    openStats = { showPlayer = false; browse.clear(); destination = DesktopDestination.STATS },
+                    home = { showPlayer = false; browse.clear(); destination = DesktopDestination.HOME },
+                    canRefresh = true
+                ))
+                }
+                BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().then(if (showYouTubeAccounts) Modifier.blur(18.dp) else Modifier)) {
+                  val showNowPlaying = queue?.current != null && playback != null && lyrics != null
+                  val leftTarget = if (leftCollapsed) 64f else sidebarWidth(leftSidebarWidth, 180f, 320f)
+                  val rightLimit = nowPlayingWidthLimit(maxWidth.value, maxHeight.value, leftTarget)
+                  val rightIsCollapsed = (rightCollapsed && sidePanel == com.auralis.music.windows.player.SidePanel.NOW_PLAYING) || rightLimit < 280f
+                  val rightTarget = if (!showNowPlaying) 0f else if (rightIsCollapsed) 40f else sidebarWidth(rightSidebarWidth, 280f, rightLimit)
+                  val leftLimit = (maxWidth.value - rightTarget - 360f - 12f).coerceIn(180f, 320f)
+                  val windowSize = maxWidth to maxHeight
+                  val leftDisplay = animatedSidebarWidth(
+                      (if (leftCollapsed) 64f else sidebarWidth(leftSidebarWidth, 180f, leftLimit)).dp, windowSize, resizingLeft)
+                  androidx.compose.runtime.SideEffect { currentLeftSidebarWidth = leftDisplay }
+                  val rightDisplay = animatedSidebarWidth(rightTarget.dp, windowSize, resizingRight)
+                  // Spotify-style layout: Your Library, page and Now playing are rounded panels with even gaps.
+                  val panelShape = RoundedCornerShape(12.dp)
+                  // Your Library (left panel): Liked Songs, then the playlists you imported or synced from the
+                  // phone (the local library). The YouTube account's own playlists stay out until imported.
+                  val appLibrary by libraryViewModel.uiState.collectAsState()
+                  fun openLibrary(key: String, select: () -> Unit) {
+                      showPlayer = false; browse.clear(); selectedLibraryKey = key; select(); destination = DesktopDestination.LIBRARY
+                  }
+                  val libraryEntries = buildList {
+                      add(LibraryEntry("liked", "Liked Songs", "Playlist · ${appLibrary.favorites.size} songs", null, liked = true) {
+                          openLibrary("liked") { libraryViewModel.openSmartCollection(com.auralis.music.ui.viewmodel.SmartCollectionType.LIKED) }
+                      })
+                      appLibrary.playlists.forEach { p ->
+                          // Where it came from, so two imports with the same name can be told apart.
+                          val source = when (com.auralis.music.windows.library.desktopPlaylistSource(p)) {
+                              com.auralis.music.ui.library.LibrarySourceFilter.SPOTIFY -> "Spotify"
+                              com.auralis.music.ui.library.LibrarySourceFilter.YOUTUBE -> "YouTube Music"
+                              else -> "Playlist"
+                          }
+                          add(LibraryEntry("local:${p.id}", p.title, "$source · ${p.tracks.size} songs", p.coverUrl ?: p.tracks.firstOrNull()?.thumbnail,
+                              menu = { playlistMenu = p }) {
+                              openLibrary("local:${p.id}") { libraryViewModel.selectPlaylist(p.id, p) }
+                          })
+                      }
+                  }.distinctBy { it.key }
+                  Row(Modifier.fillMaxSize().padding(8.dp)) {
+                    // Tiled around the Up Next card: the panel fills whatever room the card leaves.
+                    // While the card resizes (its own animation) the cut-out follows it frame by frame;
+                    // only appearing and disappearing animate here, so the two never drift apart.
+                    val notchW = remember { androidx.compose.animation.core.Animatable(0.dp, androidx.compose.ui.unit.Dp.VectorConverter) }
+                    val notchH = remember { androidx.compose.animation.core.Animatable(0.dp, androidx.compose.ui.unit.Dp.VectorConverter) }
+                    androidx.compose.runtime.LaunchedEffect(upNextSize) {
+                        val shown = upNextSize.width > 0.dp && upNextSize.height > 0.dp
+                        val w = if (shown) upNextSize.width + 8.dp else 0.dp
+                        val h = if (shown) upNextSize.height + 8.dp else 0.dp
+                        if (notchW.value > 0.dp && shown) { notchW.snapTo(w); notchH.snapTo(h) }
+                        else kotlinx.coroutines.coroutineScope {
+                            launch { notchW.animateTo(w, androidx.compose.animation.core.tween(220)) }
+                            launch { notchH.animateTo(h, androidx.compose.animation.core.tween(220)) }
+                        }
+                    }
+                    val notchWidth = notchW.value
+                    val notchHeight = notchH.value
+                    Box(Modifier.width(leftDisplay).fillMaxHeight().clip(SidebarNotchShape(12.dp, notchWidth, notchHeight)).then(com.auralis.music.windows.dev.timedLayout("left")).then(com.auralis.music.windows.dev.perfSkip("left"))) {
+                        playlistMenu?.let { p ->
+                            com.auralis.music.ui.library.PlaylistOptionsBottomSheet(
+                                playlist = p,
+                                onDismiss = { playlistMenu = null },
+                                onEditPlaylist = libraryViewModel::editPlaylist,
+                                onAddToQueue = { tracks -> tracks.forEach { playback?.addToQueue(it) } },
+                                onDeletePlaylist = { libraryViewModel.deletePlaylist(p.id); playlistMenu = null }
+                            )
+                        }
+                        SidebarCollapseContent(leftCollapsed, sidebarWidth(leftSidebarWidth, 180f, leftLimit).dp) { compact ->
+                        NavigationSidebar(
+                            selected = if (browse.top != null) null else when (destination) {
+                                DesktopDestination.HOME -> SidebarPage.HOME
+                                DesktopDestination.HISTORY -> SidebarPage.HISTORY
+                                DesktopDestination.LIBRARY -> if (appLibrary.selectedSmartCollection == com.auralis.music.ui.viewmodel.SmartCollectionType.DOWNLOADED) SidebarPage.DOWNLOADS else SidebarPage.LIBRARY
+                                else -> null
+                            }, collapsed = compact, onToggle = { leftCollapsed = !leftCollapsed },
+                            shortcutScrollState = navigationScroll,
+                            onSelect = { page ->
+                                if (page != SidebarPage.NEW_PLAYLIST) { showPlayer = false; browse.clear(); selectedLibraryKey = null }
+                                when (page) {
+                                    SidebarPage.NEW_PLAYLIST -> showCreatePlaylist = true
+                                    SidebarPage.HOME -> destination = DesktopDestination.HOME
+                                    SidebarPage.HISTORY -> destination = DesktopDestination.HISTORY
+                                    SidebarPage.LIBRARY -> {
+                                        libraryViewModel.closeSmartCollection(); libraryViewModel.selectPlaylist(null)
+                                        destination = DesktopDestination.LIBRARY
+                                    }
+                                    SidebarPage.DOWNLOADS -> {
+                                        libraryViewModel.openSmartCollection(com.auralis.music.ui.viewmodel.SmartCollectionType.DOWNLOADED)
+                                        destination = DesktopDestination.LIBRARY
+                                    }
+                                }
+                            }, shortcuts = {
+                                com.auralis.music.windows.home.SidebarShortcuts(homeViewModel, library, playback, browse, compact,
+                                    onOpenPlaylist = { id -> showPlayer = false; browse.clear(); libraryViewModel.selectPlaylist(id); destination = DesktopDestination.LIBRARY },
+                                    onBrowse = { showPlayer = false },
+                                    searchRepository = searchRepository, showMessage = showUnavailable)
+                            }, contentBottomInset = if (upNextSize.height > 0.dp) upNextSize.height + 8.dp else 0.dp)
+                        }
+                    }
+                    if (!leftCollapsed) SidebarResizeHandle(
+                        onDrag = { leftSidebarWidth = sidebarWidth(leftSidebarWidth + it, 180f, leftLimit) },
+                        onDragging = { resizingLeft = it })
+                    else Spacer(Modifier.width(8.dp))
+                    Box(Modifier.weight(1f).fillMaxHeight().clip(panelShape).background(MaterialTheme.colorScheme.surface).then(com.auralis.music.windows.dev.timedLayout("page")).then(com.auralis.music.windows.dev.perfSkip("page"))) {
+                        DesktopPageSurface(Modifier.fillMaxSize()) {
+                        androidx.compose.runtime.key(refreshTick) {
+                        // Pages fade up into place (and the old one fades out) instead of swapping on one frame.
+                        // Each page reads the page it animates to, never the live destination, so a page
+                        // leaving never redraws as the one arriving.
+                        androidx.compose.animation.AnimatedContent(
+                            targetState = if (browse.top != null) BrowseRoute else destination,
+                            transitionSpec = { pageEnterTransition() togetherWith pageExitTransition() },
+                            label = "page",
+                            modifier = Modifier.fillMaxSize()
+                        ) { page ->
+                        // Each page keeps its saved state (scroll included) while another is shown,
+                        // so Back returns exactly where the page was left.
+                        pageStates.SaveableStateProvider(if (page == BrowseRoute) "browse" else (page as DesktopDestination).name) {
+                        if (page == BrowseRoute) com.auralis.music.windows.browse.BrowsePages(browse, playback, showUnavailable, libraryViewModel, library, onBack = ::previousPage)
+                        else when (page as DesktopDestination) {
+                            DesktopDestination.HOME -> com.auralis.music.windows.home.DesktopHome(
+                                viewModel = homeViewModel,
+                                library = library,
+                                searchRepository = searchRepository,
+                                playback = playback,
+                                browse = browse,
+                                onOpenPlaylist = { id ->
+                                    libraryViewModel.selectPlaylist(id)
+                                    destination = DesktopDestination.LIBRARY
+                                },
+                                onNavigateToSearch = { showPlayer = false; searchFocusRequests++ },
+                                showMessage = showUnavailable,
+                                youtubePlaylists = youtubeState.playlists,
+                                onYouTubePlaylist = ::openYouTubePlaylist,
+                                onConnectYouTube = { showYouTubeAccounts = true },
+                                auralisSignedIn = accountState.profile != null,
+                                listeningRecents = allListens.sortedByDescending { it.startedAt }.map { it.track }.distinctBy { it.id }.take(40),
+                                accountPresentation = homeAccountPresentation,
+                                tasteShelf = tasteShelf,
+                                quickPicks = quickPicks,
+                                familiarArtists = familiarArtists,
+                                // The greeting's name: the Auralis account's, else the YouTube account's.
+                                // The name takes the playing song's colours, as the background does.
+                                greetingName = accountState.profile?.displayName?.takeIf { it.isNotBlank() }
+                                    ?: youtubeState.identity?.name?.takeIf { youtubeSignedIn && it.isNotBlank() },
+                                greetingPalette = artworkPalette,
+                                // Search lives in the title bar now; Home shows no search button.
+                                findMusic = {},
+                            )
+                            DesktopDestination.SEARCH -> com.auralis.music.windows.search.SearchScreen(
+                                state = searchState,
+                                currentTrackId = queue?.current?.id,
+                                isPlaying = playerState == com.auralis.music.desktop.playback.VlcAudioPlayer.State.PLAYING,
+                                onPlay = if (playback != null) { track, _ -> playback.playSingle(track) } else null,
+                                onUnavailable = showUnavailable,
+                                onOpenArtist = browse::openArtist,
+                                onOpenAlbum = { browse.openAlbum(it) },
+                                onPlayNext = { track ->
+                                    playback?.playNext(track)
+                                    showUnavailable(com.auralis.music.ui.i18n.str(com.auralis.music.ui.i18n.Strings.playing_next_x, track.title))
+                                },
+                                onAddToQueue = { track ->
+                                    playback?.addToQueue(track)
+                                    showUnavailable(com.auralis.music.ui.i18n.str(com.auralis.music.ui.i18n.Strings.added_to_queue_x, track.title))
+                                },
+                                onMenuClick = { menuTrack = it },
+                                focusRequests = searchFocusRequests,
+                                onTypingChange = { typing = it }
+                            )
+                            DesktopDestination.HISTORY -> {
+                                val entries by history.getHistory().collectAsState(emptyList())
+                                com.auralis.music.windows.history.HistorySheet(
+                                    history = entries, currentTrack = queue?.current,
+                                    isPlaying = playerState == com.auralis.music.desktop.playback.VlcAudioPlayer.State.PLAYING,
+                                    onTrackClick = { track, _ -> playback?.playSingle(track) },
+                                    onRemoveFromHistory = { id -> scope.launch { history.removeFromHistory(id) } },
+                                    onClearHistory = { scope.launch { history.clearHistory() } },
+                                    onDismiss = ::previousPage,
+                                    onPlayNext = { playback?.playNext(it) }, onAddToQueue = { playback?.addToQueue(it) },
+                                    onTrackMenu = { menuTrack = it }
+                                )
+                            }
+                            DesktopDestination.WRAPPED -> Box(Modifier.fillMaxSize())
+                            DesktopDestination.STATS -> com.auralis.music.windows.history.ListeningStatsPage(
+                                listeningStats, playback, false,
+                                onBack = ::previousPage,
+                                onOpenWrapped = { destination = DesktopDestination.WRAPPED },
+                                search = backgroundSearch,
+                                onOpenArtist = browse::openArtist,
+                                onTrackMenu = { menuTrack = it }
+                            )
+                            DesktopDestination.PROFILE -> com.auralis.music.windows.profile.DesktopProfile(
+                                account = account,
+                                stores = stores,
+                                libraryViewModel = libraryViewModel,
+                                history = history,
+                                search = searchRepository,
+                                hasActiveTrack = queue?.current != null,
+                                onDismiss = ::previousPage
+                            )
+                            DesktopDestination.SETTINGS -> androidx.compose.runtime.LaunchedEffect(Unit) {
+                                previousPage()
+                                showSettings = true
+                            }
+                            DesktopDestination.IMPORT -> androidx.compose.runtime.LaunchedEffect(Unit) {
+                                destination = DesktopDestination.HOME
+                                showImport = true
+                            }
+                            DesktopDestination.DISCORD -> androidx.compose.runtime.LaunchedEffect(Unit) {
+                                previousPage(); showDiscord = true
+                            }
+                            DesktopDestination.LIBRARY -> com.auralis.music.windows.library.DesktopLibrary(
+                                viewModel = libraryViewModel,
+                                homeViewModel = homeViewModel,
+                                library = library,
+                                playback = playback,
+                                browse = browse,
+                                onOpenProfile = { destination = DesktopDestination.PROFILE },
+                                onOpenHistory = { destination = DesktopDestination.HISTORY },
+                                onOpenListenTogether = { showTogether = true },
+                                showMessage = showUnavailable
+                            )
+                        }
+                        }
+                        }
+                        }
+                        menuTrack?.let { track ->
+                            com.auralis.music.windows.library.DesktopTrackMenu(
+                                track = track,
+                                library = library,
+                                playback = playback,
+                                browse = browse,
+                                homeViewModel = homeViewModel,
+                                showMessage = showUnavailable,
+                                onDismiss = { menuTrack = null }
+                            )
+                        }
+                        }
+                        DesktopNotificationPillHost(snackbar, modifier = Modifier.align(Alignment.BottomCenter).padding(start = 16.dp, end = 16.dp, bottom = 18.dp))
+                    }
+                    if (showNowPlaying && playback != null && lyrics != null) {
+                      if (!rightIsCollapsed) SidebarResizeHandle(
+                          onDrag = { rightSidebarWidth = sidebarWidth(rightSidebarWidth - it, 280f, rightLimit) },
+                          onDragging = { resizingRight = it })
+                      else Spacer(Modifier.width(8.dp))
+                      Box(Modifier.width(rightDisplay).fillMaxHeight().clip(panelShape).then(com.auralis.music.windows.dev.timedLayout("right")).then(com.auralis.music.windows.dev.perfSkip("right"))
+                          .then(if (rightIsCollapsed) Modifier.background(MaterialTheme.colorScheme.surface) else Modifier)) {
+                        SidebarCollapseContent(rightIsCollapsed, sidebarWidth(rightSidebarWidth, 280f, rightLimit).dp, compactWidth = 40.dp) { compact ->
+                        if (compact) {
+                        com.auralis.music.ui.components.IconButton(onClick = { rightCollapsed = !rightCollapsed }, modifier = Modifier.width(40.dp), enabled = rightLimit >= 280f) {
+                            Icon(if (rightIsCollapsed) Icons.Default.ChevronLeft else Icons.Default.ChevronRight,
+                                if (rightIsCollapsed) "Expand now playing" else "Collapse now playing")
+                        }
+                        }
+                        else {
+                        val panelModifier = Modifier.width(sidebarWidth(rightSidebarWidth, 280f, rightLimit).dp).fillMaxHeight()
+                        val closePanel = { sidePanel = com.auralis.music.windows.player.SidePanel.NOW_PLAYING }
+                        androidx.compose.animation.AnimatedContent(
+                            targetState = sidePanel,
+                            transitionSpec = { pageEnterTransition() togetherWith pageExitTransition() },
+                            label = "sidePanel"
+                        ) { panel ->
+                        when (panel) {
+                            com.auralis.music.windows.player.SidePanel.LYRICS ->
+                                com.auralis.music.windows.player.SidePanelSheet("Lyrics", closePanel, panelModifier) {
+                                    com.auralis.music.windows.player.SideLyricsPanel(playback, lyrics)
+                                }
+                            com.auralis.music.windows.player.SidePanel.QUEUE ->
+                                com.auralis.music.windows.player.SidePanelSheet("Queue", closePanel, panelModifier) {
+                                    com.auralis.music.windows.player.QueueView(playback, Modifier.fillMaxSize())
+                                }
+                            com.auralis.music.windows.player.SidePanel.NOW_PLAYING ->
+                                com.auralis.music.windows.player.NowPlayingSidebar(playback, lyrics,
+                                    onExpand = { playerPanel = com.auralis.music.windows.player.PlayerPanel.LYRICS; showPlayer = true },
+                                    modifier = panelModifier, palette = artworkPalette,
+                                    onCollapse = { rightCollapsed = true },
+                                    library = library,
+                                    onOpenQueue = { sidePanel = com.auralis.music.windows.player.SidePanel.QUEUE },
+                                    onOpenArtist = { showPlayer = false; browse.openArtist(it) }, mainPlayerOpen = showPlayer)
+                        }
+                        }
+                        }
+                      }
+                      }
+                    }
+                  }
+                }
+                // The next song in its own card just above the bar, lined up with the bar's cover.
+                Box(com.auralis.music.windows.dev.perfSkip("bar")) {
+                com.auralis.music.windows.player.UpNextPeek(
+                    controller = playback,
+                    width = currentLeftSidebarWidth,
+                    collapsed = leftCollapsed,
+                    onSize = { upNextSize = it },
+                    // Lined up with the Library panel: same 8dp left edge, bottom on the panels' bottom edge.
+                    modifier = Modifier.align(Alignment.TopStart).padding(start = 8.dp)
+                        .offset(y = -(com.auralis.music.windows.player.UpNextPeekHeight + com.auralis.music.windows.player.UpNextPeekGap)))
+                com.auralis.music.windows.player.NowPlayingBar(
+                    playback,
+                    onOpenPlayer = { if (canShowPlayer) showPlayer = true },
+                    // Toggle the right panel, as Spotify's lyrics and queue buttons do.
+                    onOpenQueue = { if (canShowPlayer) sidePanel = if (sidePanel == com.auralis.music.windows.player.SidePanel.QUEUE)
+                        com.auralis.music.windows.player.SidePanel.NOW_PLAYING else com.auralis.music.windows.player.SidePanel.QUEUE },
+                    onOpenLyrics = { if (canShowPlayer) sidePanel = if (sidePanel == com.auralis.music.windows.player.SidePanel.LYRICS)
+                        com.auralis.music.windows.player.SidePanel.NOW_PLAYING else com.auralis.music.windows.player.SidePanel.LYRICS }
+                )
+                }
+            }
+            if (destination == DesktopDestination.WRAPPED) {
+                Box(Modifier.fillMaxSize().padding(top = TITLE_BAR_HEIGHT)) {
+                    com.auralis.music.windows.wrapped.DesktopWrappedPage(listeningStats, library, backgroundSearch,
+                        onClose = ::previousPage)
+                }
+            }
+            // The full player slides up over everything, like the phone's player sheet.
+            androidx.compose.animation.AnimatedVisibility(
+                modifier = Modifier.padding(top = if (playerFullscreen) 0.dp else TITLE_BAR_HEIGHT),
+                visible = showPlayer && destination != DesktopDestination.WRAPPED && playback != null && lyrics != null,
+                enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(180)),
+                exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(160))
+            ) {
+                if (playback != null && lyrics != null) {
+                    com.auralis.music.windows.player.PlayerScreen(
+                        playback,
+                        lyrics,
+                        panel = playerPanel,
+                        onPanelChange = { playerPanel = it },
+                        onClose = { showPlayer = false },
+                        palette = artworkPalette,
+                        onImmersive = onOpenImmersive
+                    )
+                }
+            }
+        }
+    }
+    }
+}
+
+}
+
+}
+
+/** The dock's tabs: the pages the sidebar used to list (Listen Together and Stats are in the title bar). */
+internal val DockTabs = listOf(DesktopDestination.HOME, DesktopDestination.LIBRARY,
+    DesktopDestination.WRAPPED, DesktopDestination.SETTINGS)
+
+@Composable
+private fun NotBuiltYet(title: String, detail: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(title, fontSize = 40.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+        Text("Not built yet. $detail", fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** The page key while an album, playlist or artist page is open (they animate among themselves). */
+private object BrowseRoute
+
+/** A page arriving: fades in while rising a few dp and settling from 98.5% scale. */
+internal fun pageEnterTransition(): androidx.compose.animation.EnterTransition =
+    androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(240, delayMillis = 60,
+        easing = androidx.compose.animation.core.LinearOutSlowInEasing)) +
+    androidx.compose.animation.scaleIn(androidx.compose.animation.core.tween(300,
+        easing = androidx.compose.animation.core.FastOutSlowInEasing), initialScale = 0.985f) +
+    androidx.compose.animation.slideInVertically(androidx.compose.animation.core.tween(300,
+        easing = androidx.compose.animation.core.FastOutSlowInEasing)) { it / 48 }
+
+/** A page leaving: a quick fade, so the next one isn't drawn over a full-strength old page. */
+internal fun pageExitTransition(): androidx.compose.animation.ExitTransition =
+    androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(120,
+        easing = androidx.compose.animation.core.FastOutLinearInEasing))

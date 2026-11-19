@@ -1,0 +1,302 @@
+rules_version = '2';
+
+// Auralis Firestore security rules.
+//
+// Models:
+// 1. User library: every signed-in user owns exactly one document at `users/{uid}`.
+// 2. Listen Together: shared listening rooms at `rooms/{roomId}` with presence
+//    subcollections at `rooms/{roomId}/members/{memberId}`.
+//
+// Deploy with:  firebase deploy --only firestore:rules
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---- Helpers ----------------------------------------------------------
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isAuthenticated() && request.auth.uid == uid;
+    }
+
+    // Reject documents that are too large to be a legitimate library, so a
+    // compromised client cannot use a user document as bulk storage.
+    function withinUserSizeLimit() {
+      return request.resource.data.keys().size() <= 16
+        && (!('favorites' in request.resource.data)
+            || request.resource.data.favorites.size() <= 5000)
+        && (!('playlists' in request.resource.data)
+            || request.resource.data.playlists.size() <= 500);
+    }
+
+    function hasValidUserShape() {
+      return (!('favorites' in request.resource.data)
+              || request.resource.data.favorites is list)
+        && (!('playlists' in request.resource.data)
+            || request.resource.data.playlists is list)
+        && (!('updatedAt' in request.resource.data)
+            || request.resource.data.updatedAt is number)
+        && (!('favoritesUpdatedAt' in request.resource.data)
+            || request.resource.data.favoritesUpdatedAt is number)
+        && (!('playlistsUpdatedAt' in request.resource.data)
+            || request.resource.data.playlistsUpdatedAt is number)
+        && (!('schemaVersion' in request.resource.data)
+            || request.resource.data.schemaVersion is int);
+    }
+
+    function hasValidRoomShape() {
+      return request.resource.data.keys().size() <= 20
+        && request.resource.data.id is string
+        && request.resource.data.code is string
+        && request.resource.data.hostId is string
+        && request.resource.data.hostName is string
+        && request.resource.data.isPlaying is bool
+        && request.resource.data.playbackPosition is number
+        && request.resource.data.updatedAt is number
+        && request.resource.data.status in ['active', 'closed']
+        && (!('queue' in request.resource.data)
+            || request.resource.data.queue.size() <= 100);
+    }
+
+    function hasValidMemberShape() {
+      return request.resource.data.keys().size() <= 10
+        && request.resource.data.id is string
+        && request.resource.data.name is string
+        && request.resource.data.isHost is bool
+        && request.resource.data.lastSeen is number;
+    }
+
+    // ---- Auralis Connect helpers ------------------------------------------
+
+    // Signed in to this account with a real sign-in (email or Google), not an anonymous guest.
+    function isAccount(uid) {
+      return isOwner(uid) && request.auth.token.firebase.sign_in_provider != 'anonymous';
+    }
+
+    function validConnectDevice(deviceId) {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['id', 'name', 'nickname', 'platform', 'type', 'appVersion', 'canPlay', 'online', 'createdAt', 'seenAt'])
+        && d.id == deviceId && deviceId.size() <= 64
+        && d.name is string && d.name.size() <= 80
+        && (d.get('nickname', null) == null || (d.nickname is string && d.nickname.size() <= 80))
+        && d.platform in ['ANDROID', 'WINDOWS', 'WEB', 'OTHER']
+        && d.type in ['PHONE', 'TABLET', 'COMPUTER', 'SPEAKER', 'BROWSER']
+        && d.appVersion is string && d.appVersion.size() <= 40
+        && d.canPlay is bool && d.online is bool && d.createdAt is number
+        && d.seenAt == request.time;
+    }
+
+    function validConnectSession() {
+      let s = request.resource.data;
+      return s.keys().hasOnly(['version', 'ownerId', 'ownerName', 'ownerType', 'epoch', 'leaseUntil', 'track', 'playing',
+          'buffering', 'positionMs', 'positionAt', 'durationMs', 'queueRev', 'queueIndex', 'shuffle', 'repeat', 'context',
+          'transfer', 'commands', 'updatedBy', 'updatedAt'])
+        && s.version is int && s.epoch is int && s.queueRev is int
+        && s.ownerId is string && s.ownerId.size() <= 64
+        && s.ownerName is string && s.ownerName.size() <= 80
+        && s.leaseUntil is number && s.leaseUntil <= request.time.toMillis() + 120000
+        && s.playing is bool && s.buffering is bool
+        && s.positionMs is number && s.positionAt is number && s.durationMs is number
+        && s.shuffle is bool && s.repeat in ['OFF', 'ALL', 'ONE']
+        && (s.track == null || s.track is map)
+        && (s.transfer == null || (s.transfer is map && s.transfer.status in ['requested', 'ready', 'committed', 'failed']))
+        && s.commands is map && s.commands.size() <= 20
+        && s.updatedBy is string && s.updatedBy.size() <= 64
+        && s.updatedAt == request.time;
+    }
+
+    // The last playback action, beside the session so older clients can't erase it.
+    function validConnectIntent() {
+      let i = request.resource.data;
+      return i.keys().hasOnly(['version', 'epoch', 'at', 'by']) && i.keys().hasAll(['version', 'epoch', 'at', 'by'])
+        && i.version is int && i.epoch is int && i.at is number
+        && i.at <= request.time.toMillis() + 120000
+        && i.by is string && i.by.size() <= 64;
+    }
+
+    function validConnectQueue() {
+      let q = request.resource.data;
+      return q.keys().hasOnly(['rev', 'offset', 'tracks']) && q.rev is int && q.offset is int
+        && q.tracks is list && q.tracks.size() <= 100;
+    }
+
+    function connectOwnerUnchanged() {
+      return request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.epoch == resource.data.epoch;
+    }
+
+    // A new owner takes the next epoch, and only: when there was none, when the old owner's lease
+    // ran out, as the target of a pending handoff, or when the old owner hands over itself.
+    function connectOwnerChangeAllowed() {
+      let before = resource.data;
+      let after = request.resource.data;
+      let t = before.get('transfer', null);
+      return after.epoch == before.epoch + 1 && (
+        before.ownerId == ''
+        || before.leaseUntil < request.time.toMillis()
+        || (t != null && t.status in ['requested', 'ready'] && t.to == after.ownerId && t.epoch == after.epoch)
+        || after.updatedBy == before.ownerId);
+    }
+
+    // ---- User library ----------------------------------------------------
+
+    match /users/{uid} {
+      // A user may only ever read their own document.
+      allow get: if isOwner(uid);
+
+      // No collection-wide listing: it would expose the set of user ids.
+      allow list: if false;
+
+      allow create, update: if isOwner(uid) && hasValidUserShape() && withinUserSizeLimit();
+
+      // Account deletion is not implemented in the client yet. Allowing the owner
+      // to delete their own document is intentional and self-limited.
+      allow delete: if isOwner(uid);
+
+      // Listening stats, one document per UTC day, so they survive a reinstall.
+      // `events` maps "<startMs>_<trackId>" to one listen.
+      match /listening/{day} {
+        allow read: if isOwner(uid);
+        allow create, update: if isOwner(uid)
+          && day.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+          && request.resource.data.keys().hasOnly(['events', 'updatedAt'])
+          && request.resource.data.events is map
+          && request.resource.data.events.size() <= 3000
+          && request.resource.data.updatedAt is number;
+        allow delete: if isOwner(uid);
+      }
+
+      // ---- Auralis Connect (see docs/connect.md) ----
+      // Only clients signed in to this very account (never anonymous Listen Together guests)
+      // see its devices and session. Ownership comes from request.auth.uid matching the path.
+
+      // One registration per client install: name, platform, heartbeat.
+      match /connectDevices/{deviceId} {
+        allow read: if isAccount(uid);
+        allow create, update: if isAccount(uid) && validConnectDevice(deviceId);
+        allow delete: if isAccount(uid);
+      }
+
+      // `session`: the one authoritative session. `queue`: its queue window.
+      match /connect/{docId} {
+        allow get: if isAccount(uid) && docId in ['session', 'queue', 'intent'];
+        allow list: if false;
+        allow create: if isAccount(uid) && (
+          (docId == 'session' && validConnectSession() && request.resource.data.version == 1
+            && request.resource.data.epoch in [0, 1])
+          || (docId == 'queue' && validConnectQueue())
+          || (docId == 'intent' && validConnectIntent()));
+        allow update: if isAccount(uid) && (
+          (docId == 'session' && validConnectSession()
+            && request.resource.data.version == resource.data.version + 1
+            && (connectOwnerUnchanged() || connectOwnerChangeAllowed()))
+          || (docId == 'queue' && validConnectQueue())
+          || (docId == 'intent' && validConnectIntent()
+            && request.resource.data.version >= resource.data.version));
+        allow delete: if isAccount(uid);
+      }
+
+      // No other nested collections are used under users.
+      match /{document=**} {
+        allow read, write: if false;
+      }
+    }
+
+    // ---- Listen Together Rooms -------------------------------------------
+
+    match /rooms/{roomId} {
+      // Any authenticated participant (Google Auth or Anonymous) can look up a room by ID/code.
+      allow get: if isAuthenticated();
+
+      // Collection-wide listing is denied to prevent scraping active room codes.
+      allow list: if false;
+
+      // Only the host can create a room, matching their own auth UID.
+      allow create: if isAuthenticated()
+        && request.resource.data.hostId == request.auth.uid
+        && request.resource.data.status == 'active'
+        && hasValidRoomShape();
+
+      // Only the room host can update room state or close the room.
+      allow update: if isAuthenticated()
+        && resource.data.hostId == request.auth.uid
+        && (request.resource.data.status == 'closed' || hasValidRoomShape());
+
+      // Only the host can delete the room document.
+      allow delete: if isAuthenticated() && resource.data.hostId == request.auth.uid;
+
+      // ---- Room Members Subcollection ----
+      match /members/{memberId} {
+        // Members in the room can see the active roster.
+        allow get, list: if isAuthenticated();
+
+        // A user may only create or update their own presence/heartbeat record.
+        allow create, update: if isAuthenticated()
+          && memberId == request.auth.uid
+          && request.resource.data.id == request.auth.uid
+          && hasValidMemberShape();
+
+        // A user can delete their own member record (leave room). Once the room document is
+        // gone (the host closed it), anyone signed in may clear its leftover member records.
+        allow delete: if isAuthenticated() && (
+          memberId == request.auth.uid ||
+          !exists(/databases/$(database)/documents/rooms/$(roomId))
+        );
+      }
+
+      // ---- Room Recommendations Subcollection ----
+      match /recommendations/{recommendationId} {
+        function isRoomMember() {
+          return isAuthenticated()
+            && exists(/databases/$(database)/documents/rooms/$(roomId)/members/$(request.auth.uid));
+        }
+
+        function isRoomHost() {
+          return isAuthenticated()
+            && get(/databases/$(database)/documents/rooms/$(roomId)).data.hostId == request.auth.uid;
+        }
+
+        function onlyChanges(keys) {
+          return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
+        }
+
+        // The upvote list may only gain or lose the caller's own uid, and never holds duplicates.
+        function togglesOwnUpvoteOnly() {
+          let before = resource.data.upvotes.toSet();
+          let after = request.resource.data.upvotes.toSet();
+          return request.resource.data.upvotes is list
+            && request.resource.data.upvotes.size() == after.size()
+            && after.difference(before).union(before.difference(after)) == [request.auth.uid].toSet();
+        }
+
+        // Only people in the room can read recommendations.
+        allow get, list: if isRoomMember() || isRoomHost();
+
+        // Room members recommend as themselves, starting pending with only their own upvote.
+        allow create: if isRoomMember()
+          && request.resource.data.recommendedByUid == request.auth.uid
+          && request.resource.data.status == 'pending'
+          && request.resource.data.upvotes == [request.auth.uid]
+          && request.resource.data.keys().hasOnly(
+               ['id', 'track', 'recommendedByUid', 'recommendedByName', 'note', 'upvotes', 'createdAt', 'status']);
+
+        // Members toggle their own upvote; only the host changes the status.
+        allow update: if (isRoomMember() && onlyChanges(['upvotes']) && togglesOwnUpvoteOnly())
+          || (isRoomHost() && onlyChanges(['status'])
+              && request.resource.data.status in ['pending', 'accepted', 'played', 'declined']);
+
+        // The recommender or the room host can delete/dismiss recommendations.
+        allow delete: if isAuthenticated()
+          && (resource.data.recommendedByUid == request.auth.uid || isRoomHost());
+      }
+    }
+
+    // ---- Default deny ----------------------------------------------------
+    // Anything not matched above is inaccessible.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

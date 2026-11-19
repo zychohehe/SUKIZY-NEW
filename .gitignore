@@ -1,98 +1,80 @@
-# Gradle
+# Gradle & Android Build Artifacts
 .gradle/
-build/
-!gradle/wrapper/gradle-wrapper.jar
 .kotlin/
-.kotlin/errors/
-gradle/gradle-daemon-jvm.properties
-
-# IntelliJ IDEA
-.idea/
-*.iml
-*.iws
-*.bak
-
-# VSCode
-.vscode/
-
-# Zed
-.zed/
-
-# Android
+build/
+*/build/
+*.apk
+*.aab
 local.properties
-.externalNativeBuild
-.cxx
-*.keystore
-!debug.keystore
+.cxx/
 
-# Desktop
-*.dll
-*.so
-*.so.*
-*.dylib
-*.class
-bin/
-!external/*.dll
-!external/*.so
-!external/*.dylib
-external/
-desktopApp/src/desktopMain/resources/windows/*.exe
-desktopApp/src/desktopMain/resources/windows/*.dll
-desktopApp/src/desktopMain/resources/linux/bgutil-ytdlp-pot-provider-rs
-desktopApp/src/desktopMain/resources/macos/bgutil-ytdlp-pot-provider-rs
-/desktopApp/src/jvmMain/proto/listentogether.proto
-metro-wv2-helper/bin/
-metro-wv2-helper/obj/
-metro-wv2-helper/tests/obj/
+# Logs & Temp Files
+logs/
+*.log
+__pycache__/
+*.py[cod]
+/vlc-help.txt
 
-# iOS / Xcode
-DerivedData/
-iosApp/DerivedData/
-iosApp/build/
-project.xcworkspace/
-xcuserdata/
-*.xcuserstate
-*.ipa
-
-# Swift
-.swift-version
-swiftly-x86_64.tar.gz
-
-# Secrets
-secrets.properties
-chucker-export-*
-
-# OS
+# Editor & OS files
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.iml
 .DS_Store
 Thumbs.db
+*.sw?
+.claude/
+.agents/
+.firebase/
 
-# Logs / dumps
-*.log
-*.har
-/*.txt
-!androidApp/src/main/baseline-prof.txt
-!opusDecoder/src/main/jni/CMakeLists.txt
-!opusDecoder/src/main/resources/META-INF/LICENSE-libopus.txt
-Screenshot_*.png
+# Environment Secrets & API Keys
+.env
+.env.*
+!.env.example
+secrets.properties
+/android/app/google-services.json
+/windows/src/main/resources/firebase-desktop.json
+*.keystore
+*.jks
 
-# Local / scratch
-stuff
-.stuff/
-stuff/*
-skills
-dist/
-tools/
-scripts/.fonts/
-__pycache__/
-/linter/
-HANDOFF.md
+# Scratch & Temporary Test Media
+*.mp4
+*.wav
+*.mp3
+*.ogg
+*.tar.gz
+shazam_pkg/
+scratch/
+*.db
+*.sqlite
+android/app/src/debug/assets/restore_covers.json
+scratch_yt_res.json
+*.pb
+scratch_audio/
+scratch_*.json
+/package-lock.json
+docs/verification-logs/
+# Test lyrics fixtures (copyrighted lyrics; kept locally, tests skip when missing)
+creep_raw.ttml
+*.ttml
+!android/app/src/**/*.ttml
 
-# AI tooling
-.cortexkit
-.cursor
-.claude
-.codex
-.codeium
-.opencode
-.mcp.json
-/*.flatpak
+
+.empryo
+.codex-remote-attachments/
+*.xml.dump
+window_dump.xml
+test_queue.py
+
+# Discord Social SDK (proprietary; not redistributable). Place it locally to build:
+#   android/app/libs/*.jar, android/app/src/main/jniLibs/<abi>/libdiscord_partner_sdk.so,
+#   android/app/src/main/cpp/discord/*.h
+android/app/libs/
+android/app/src/main/jniLibs/
+android/app/src/main/cpp/discord/
+
+# Owner-provided desktop OAuth configuration; bundled locally, never committed.
+/windows/local-resources/
+
+# Firestore rules tests
+firestore-tests/node_modules/

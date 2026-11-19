@@ -1,0 +1,204 @@
+package com.auralis.music.data.repository
+
+import com.auralis.music.data.local.dao.HistoryDao
+import com.auralis.music.data.local.dao.PlayCountDao
+import com.auralis.music.data.local.dao.PlaybackEventDao
+import com.auralis.music.data.local.dao.TrackDao
+import com.auralis.music.data.local.entity.PlaybackEventEntity
+import com.auralis.music.data.local.mapper.toDomain
+import com.auralis.music.data.local.mapper.toEntity
+import com.auralis.music.domain.model.AlbumStat
+import com.auralis.music.domain.model.ArtistStat
+import com.auralis.music.domain.model.SongStat
+import com.auralis.music.domain.model.StatsOverview
+import com.auralis.music.domain.model.Track
+import com.auralis.music.domain.repository.StatsRepository
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+
+class StatsRepositoryImpl(
+    private val trackDao: TrackDao,
+    private val playbackEventDao: PlaybackEventDao,
+    private val historyDao: HistoryDao,
+    private val playCountDao: PlayCountDao
+) : StatsRepository {
+    private val statsMutationMutex = Mutex()
+
+    override suspend fun logPlaybackEvent(track: Track, playTimeMs: Long) = withContext(Dispatchers.IO) {
+        if (track.id.isBlank()) return@withContext
+        trackDao.upsertTrackPreservingFavorite(track.toEntity())
+        // Only measured time counts; never assume a full-length listen.
+        if (playTimeMs <= 0) return@withContext
+        val effectivePlayTimeMs = playTimeMs
+        playbackEventDao.insertEvent(
+            PlaybackEventEntity(
+                trackId = track.id,
+                timestamp = System.currentTimeMillis(),
+                playTimeMs = effectivePlayTimeMs
+            )
+        )
+    }
+
+    override fun observeStatsOverview(fromTimestamp: Long, toTimestamp: Long): Flow<StatsOverview> {
+        // Counted from the same grouped events as the lists below, so "75 Songs" means 75 distinct
+        // songs (not 75 YouTube IDs, where one song can have an audio, video and Topic upload).
+        return playbackEventDao.getEventsInRangeFlow(fromTimestamp, toTimestamp).map { list ->
+            StatsOverview(
+                totalPlayTimeMs = list.sumOf { it.event.playTimeMs },
+                songsCount = list.map { songKey(it.track.toDomain()) }.distinct().size,
+                artistsCount = list.mapNotNull { artistKey(it.track.artist) }.distinct().size,
+                albumsCount = list.mapNotNull { e ->
+                    e.track.album?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
+                }.distinct().size
+            )
+        }.flowOn(Dispatchers.Default)
+        // The ViewModel collects via stateIn(viewModelScope, ...), which defaults to the main
+        // thread; without flowOn this grouping ran there on every pill switch, stuttering the UI.
+    }
+
+    override fun observeTopSongs(
+        fromTimestamp: Long,
+        toTimestamp: Long,
+        limit: Int
+    ): Flow<List<SongStat>> {
+        return playbackEventDao.getEventsInRangeFlow(fromTimestamp, toTimestamp).map { list ->
+            // Group by the song itself (cleaned title + artist), not the YouTube ID: the same song
+            // played from its official audio and its music video used to show up twice.
+            list.groupBy { songKey(it.track.toDomain()) }
+                .map { (_, events) ->
+                    // Show the version that was played most.
+                    val representative = events.groupBy { it.track.id }
+                        .maxByOrNull { (_, e) -> e.size }!!.value.first().track
+                    SongStat(
+                        track = representative.toDomain(),
+                        playCount = events.count { countsAsPlay(it.event.playTimeMs, it.track.duration) },
+                        timeListenedMs = events.sumOf { it.event.playTimeMs }
+                    )
+                }
+                .filter { it.timeListenedMs > 0 }
+                .sortedByDescending { it.timeListenedMs }
+                .take(limit)
+        }.flowOn(Dispatchers.Default)
+    }
+
+    override fun observeTopArtists(
+        fromTimestamp: Long,
+        toTimestamp: Long,
+        limit: Int
+    ): Flow<List<ArtistStat>> {
+        return playbackEventDao.getEventsInRangeFlow(fromTimestamp, toTimestamp).map { list ->
+            list.mapNotNull { e -> artistKey(e.track.artist)?.let { it to e } }
+                .groupBy({ it.first }, { it.second })
+                .map { (_, events) ->
+                    // Most common spelling, without YouTube's " - Topic" channel suffix.
+                    val artistName = events.groupingBy { displayArtist(it.track.artist) }.eachCount()
+                        .maxByOrNull { it.value }!!.key
+                    val photo = com.auralis.music.data.network.ArtistPhotoProvider.getCachedPhoto(artistName)
+                    ArtistStat(
+                        name = artistName,
+                        thumbnailUrl = photo,
+                        songsPlayedCount = events.map { songKey(it.track.toDomain()) }.distinct().size,
+                        timeListenedMs = events.sumOf { it.event.playTimeMs }
+                    )
+                }
+                .sortedByDescending { it.timeListenedMs }
+                .take(limit)
+        }.flowOn(Dispatchers.Default)
+    }
+
+    override fun observeTopAlbums(
+        fromTimestamp: Long,
+        toTimestamp: Long,
+        limit: Int
+    ): Flow<List<AlbumStat>> {
+        return playbackEventDao.getEventsInRangeFlow(fromTimestamp, toTimestamp).map { list ->
+            list.mapNotNull { e ->
+                val album = e.track.album?.trim()?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                album.lowercase() to e
+            }
+                .groupBy({ it.first }, { it.second })
+                .map { (_, events) ->
+                    // Artwork and spelling from the album's most played track.
+                    val representative = events.groupBy { it.track.id }
+                        .maxByOrNull { (_, e) -> e.sumOf { it.event.playTimeMs } }!!.value.first().track
+                    AlbumStat(
+                        title = representative.album!!.trim(),
+                        artist = displayArtist(representative.artist),
+                        thumbnailUrl = representative.thumbnail.takeIf { it.isNotBlank() },
+                        timeListenedMs = events.sumOf { it.event.playTimeMs }
+                    )
+                }
+                .filter { it.timeListenedMs > 0 }
+                .sortedByDescending { it.timeListenedMs }
+                .take(limit)
+        }.flowOn(Dispatchers.Default)
+    }
+
+    private fun songKey(track: Track): String {
+        val fp = com.auralis.music.domain.recommendations.TrackDeduplicator.getSongFingerprint(track)
+        val title = fp.normalizedCoreTitle.ifBlank { fp.normalizedTitle }.ifBlank { track.id }
+        return "${fp.normalizedArtist}|$title"
+    }
+
+    private fun displayArtist(raw: String): String =
+        raw.trim().replace(Regex("""(?i)\s*-\s*topic$"""), "").replace(Regex("""(?i)vevo$"""), "").trim()
+
+    private fun artistKey(raw: String): String? =
+        displayArtist(raw).lowercase().replace(Regex("""[^\p{L}\p{M}0-9]"""), "").takeIf { it.isNotBlank() }
+
+    /**
+     * A listen counts as a "play" once it reaches 30s (or half the song, for songs under a minute).
+     * Time listened always counts in full; this only stops skips from inflating play counts.
+     */
+    private fun countsAsPlay(playTimeMs: Long, durationSec: Long): Boolean {
+        val threshold = if (durationSec in 1..59) durationSec * 500L else 30_000L
+        return playTimeMs >= threshold
+    }
+
+    override fun observeFirstEventTimestamp(): Flow<Long?> {
+        return playbackEventDao.getFirstEventTimestamp()
+    }
+
+    override suspend fun removeEstimatedListens() = withContext(Dispatchers.IO) {
+        statsMutationMutex.withLock {
+            // Stats shows only measured listening time. This used to rebuild events from play
+            // counts as plays x full length (wiping real events to do it), so a song started five
+            // times showed five complete listens.
+            playbackEventDao.deleteEstimatedEvents()
+            Unit
+        }
+    }
+
+    override suspend fun mergeChunkedListens() = withContext(Dispatchers.IO) {
+        statsMutationMutex.withLock {
+            val events = playbackEventDao.getAllEventsByTrack()
+            if (events.size < 2) return@withLock
+            val durations = events.map { it.trackId }.distinct()
+                .associateWith { (trackDao.getTrackById(it)?.duration ?: 0L) * 1000L }
+            val groups = com.auralis.music.domain.stats.ListenChunkMerger.findChunkedListens(
+                events.map { com.auralis.music.domain.stats.ListenChunkMerger.Event(it.id, it.trackId, it.timestamp, it.playTimeMs) }
+            ) { trackId -> durations[trackId] ?: 0L }
+            for (group in groups) {
+                playbackEventDao.setPlayTime(group.first().id, group.sumOf { it.playTimeMs })
+                playbackEventDao.deleteEvents(group.drop(1).map { it.id })
+            }
+        }
+    }
+
+    override suspend fun clearListeningStats() = withContext(Dispatchers.IO) {
+        statsMutationMutex.withLock {
+            // The startup seed reads both of these legacy tables. Clear them before events
+            // so opening Stats again cannot restore the old listening data.
+            historyDao.clearHistory()
+            playCountDao.clearPlayCounts()
+            playbackEventDao.clearAllEvents()
+        }
+        com.auralis.music.data.sync.StatsCloudSync.clearAccountStats()
+    }
+}

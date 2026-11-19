@@ -1,0 +1,834 @@
+package com.auralis.music.ui.player
+
+import com.auralis.music.R
+import com.auralis.music.ui.i18n.str
+
+import android.bluetooth.BluetoothDevice
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
+import android.os.Build
+import android.provider.Settings
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.Bluetooth
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Headphones
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Speaker
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.auralis.music.data.service.AuralisAudioPlayer
+import com.auralis.music.domain.model.AudioQuality
+import com.auralis.music.ui.components.tactileBounce
+import kotlin.math.roundToInt
+
+/**
+ * Audio Output & Device Switcher Bottom Sheet with dynamic song-reactive theming.
+ *
+ * Dynamically reacts to the playing song's artwork color palette:
+ * - Active audio route, volume slider fill, thumb, and audio quality pills seamlessly match the song's primary color.
+ * - Sheet and card containers are subtly tinted with the song's authentic hue.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AudioOutputBottomSheet(
+    currentQuality: AudioQuality,
+    onAudioQualityChange: (AudioQuality) -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+    accentColor: Color = MaterialTheme.colorScheme.primary
+) {
+    val context = LocalContext.current
+    val audioManager = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
+    val audioPlayer = remember { AuralisAudioPlayer.getInstance(context) }
+    val isSpeakerForced by audioPlayer.isSpeakerForced.collectAsState()
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    // ── 1. AUDIO DEVICE & BATTERY DETECTION ──
+    var connectedDeviceName by remember { mutableStateOf<String?>(null) }
+    var isBluetoothConnected by remember { mutableStateOf(false) }
+    var batteryPercentage by remember { mutableStateOf<Int?>(null) }
+    var isDropdownExpanded by remember { mutableStateOf(false) }
+
+    fun queryBluetoothBattery(): Int? {
+        try {
+            val btManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? android.bluetooth.BluetoothManager
+            val adapter = btManager?.adapter ?: return null
+            if (!adapter.isEnabled) return null
+
+            val getBatteryMethod = try {
+                BluetoothDevice::class.java.getMethod("getBatteryLevel")
+            } catch (_: Throwable) { null }
+
+            if (getBatteryMethod != null) {
+                for (device in adapter.bondedDevices) {
+                    try {
+                        val level = getBatteryMethod.invoke(device) as? Int
+                        if (level != null && level in 0..100) {
+                            return level
+                        }
+                    } catch (_: Throwable) {}
+                }
+            }
+        } catch (_: Throwable) {}
+        return null
+    }
+
+    fun refreshAudioDevices() {
+        try {
+            val outputs = audioManager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+            val btOutput = outputs.firstOrNull { device ->
+                device.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+                device.type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
+                device.type == AudioDeviceInfo.TYPE_BLE_SPEAKER ||
+                device.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
+            }
+
+            if (btOutput != null) {
+                isBluetoothConnected = true
+                val name = btOutput.productName?.toString()?.trim()
+                connectedDeviceName = if (!name.isNullOrBlank()) name else str(R.string.bluetooth_audio)
+                if (batteryPercentage == null) {
+                    batteryPercentage = queryBluetoothBattery()
+                }
+            } else {
+                val wired = outputs.firstOrNull {
+                    it.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
+                    it.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
+                    it.type == AudioDeviceInfo.TYPE_USB_HEADSET
+                }
+                if (wired != null) {
+                    isBluetoothConnected = false
+                    connectedDeviceName = wired.productName?.toString()?.takeIf { it.isNotBlank() } ?: str(R.string.wired_headphones)
+                    batteryPercentage = null
+                } else {
+                    isBluetoothConnected = false
+                    connectedDeviceName = null
+                    batteryPercentage = null
+                }
+            }
+        } catch (_: Throwable) {
+            isBluetoothConnected = false
+            connectedDeviceName = null
+            batteryPercentage = null
+        }
+    }
+
+    fun switchAudioRoute(toSpeaker: Boolean) {
+        audioPlayer.routeAudio(toSpeaker)
+    }
+
+    DisposableEffect(context) {
+        refreshAudioDevices()
+
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(c: Context?, intent: Intent?) {
+                when (intent?.action) {
+                    "android.bluetooth.device.action.BATTERY_LEVEL_CHANGED" -> {
+                        val level = intent.getIntExtra("android.bluetooth.device.extra.BATTERY_LEVEL", -1)
+                        if (level in 0..100) {
+                            batteryPercentage = level
+                        }
+                    }
+                    AudioManager.ACTION_AUDIO_BECOMING_NOISY,
+                    "android.media.STREAM_DEVICES_CHANGED_ACTION",
+                    BluetoothDevice.ACTION_ACL_CONNECTED,
+                    BluetoothDevice.ACTION_ACL_DISCONNECTED -> {
+                        refreshAudioDevices()
+                    }
+                }
+            }
+        }
+
+        val filter = IntentFilter().apply {
+            addAction("android.bluetooth.device.action.BATTERY_LEVEL_CHANGED")
+            addAction(AudioManager.ACTION_AUDIO_BECOMING_NOISY)
+            addAction("android.media.STREAM_DEVICES_CHANGED_ACTION")
+            addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
+            addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
+        }
+        context.registerReceiver(receiver, filter)
+
+        onDispose {
+            try {
+                context.unregisterReceiver(receiver)
+            } catch (_: Throwable) {}
+        }
+    }
+
+    // ── 2. SYSTEM VOLUME DETECTION & SYNC ──
+    val maxVolume = remember {
+        audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC).toFloat().coerceAtLeast(1f)
+    }
+    var systemVolumeFraction by remember {
+        mutableFloatStateOf(
+            (audioManager.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() / maxVolume).coerceIn(0f, 1f)
+        )
+    }
+
+    DisposableEffect(context) {
+        val volumeReceiver = object : BroadcastReceiver() {
+            override fun onReceive(c: Context?, intent: Intent?) {
+                if (intent?.action == "android.media.VOLUME_CHANGED_ACTION") {
+                    val cur = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat()
+                    systemVolumeFraction = (cur / maxVolume).coerceIn(0f, 1f)
+                }
+            }
+        }
+        val filter = IntentFilter("android.media.VOLUME_CHANGED_ACTION")
+        context.registerReceiver(volumeReceiver, filter)
+        onDispose {
+            try {
+                context.unregisterReceiver(volumeReceiver)
+            } catch (_: Throwable) {}
+        }
+    }
+
+    val rawAccent = if (accentColor != Color.Unspecified) accentColor else MaterialTheme.colorScheme.primary
+    // Dark artwork yields a near-black accent (e.g. deep brown) that vanishes on this dark sheet.
+    // Keep the album's hue but lift brightness/saturation so icons, the volume fill and the
+    // selected quality pill always read clearly.
+    val resolvedAccent = remember(rawAccent) {
+        val a = FloatArray(3)
+        android.graphics.Color.colorToHSV(rawAccent.toArgb(), a)
+        if (a[1] < 0.08f) {
+            Color.hsv(0f, 0f, a[2].coerceAtLeast(0.88f))
+        } else {
+            Color.hsv(a[0], a[1].coerceIn(0.35f, 0.80f), a[2].coerceAtLeast(0.88f))
+        }
+    }
+    val activeAccent by animateColorAsState(
+        targetValue = resolvedAccent,
+        animationSpec = tween(320, easing = FastOutSlowInEasing),
+        label = "audioOutputAccent"
+    )
+
+    val hsv = remember(activeAccent) {
+        val array = FloatArray(3)
+        android.graphics.Color.colorToHSV(activeAccent.toArgb(), array)
+        array
+    }
+    val isMonochrome = hsv[1] < 0.08f
+
+    val dynamicSheetBg = remember(activeAccent, isMonochrome) {
+        if (isMonochrome) Color(0xFF141414)
+        else Color.hsv(hsv[0], (hsv[1] * 0.14f).coerceIn(0.04f, 0.10f), 0.08f)
+    }
+
+    val dynamicCardBg = remember(activeAccent, isMonochrome) {
+        if (isMonochrome) Color(0xFF202020)
+        else Color.hsv(hsv[0], (hsv[1] * 0.18f).coerceIn(0.06f, 0.14f), 0.13f)
+    }
+
+    val dynamicCardBorder = remember(isMonochrome) {
+        Color.White.copy(alpha = 0.06f)
+    }
+
+    val dynamicBadgeBg = remember(activeAccent, isMonochrome) {
+        if (isMonochrome) Color.White.copy(alpha = 0.12f)
+        else activeAccent.copy(alpha = 0.16f)
+    }
+
+    val dynamicVolumeTrackBg = remember(activeAccent, isMonochrome) {
+        if (isMonochrome) Color.White.copy(alpha = 0.10f)
+        else activeAccent.copy(alpha = 0.22f)
+    }
+
+    // Solid, darker accent for the filled part; a pale accent for the thumb on top of it.
+    val dynamicVolumeFill = remember(activeAccent, isMonochrome) {
+        if (isMonochrome) Color(0xFF6E6E6E)
+        else androidx.compose.ui.graphics.lerp(activeAccent, Color.Black, 0.45f)
+    }
+
+    val dynamicVolumeThumb = remember(activeAccent, isMonochrome) {
+        if (isMonochrome) Color(0xFFEDEDED)
+        else androidx.compose.ui.graphics.lerp(activeAccent, Color.White, 0.45f)
+    }
+
+    val onAccentTextColor = remember(activeAccent) {
+        if (activeAccent.luminance() > 0.45f) Color(0xFF101010) else Color.White
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = dynamicSheetBg,
+        dragHandle = {
+            Box(
+                modifier = Modifier
+                    .padding(top = 12.dp, bottom = 10.dp)
+                    .size(width = 36.dp, height = 4.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.28f))
+            )
+        },
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        modifier = modifier
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 20.dp, vertical = 6.dp)
+        ) {
+            // ── SECTION 1: CONNECTED DEVICE & EXPANDABLE ROUTE SELECTOR ──
+            val isBtActive = isBluetoothConnected && !isSpeakerForced
+            val deviceTitle = if (isBtActive) {
+                connectedDeviceName ?: str(R.string.bluetooth_audio)
+            } else if (!isBluetoothConnected && connectedDeviceName != null) {
+                connectedDeviceName!!
+            } else {
+                str(R.string.phone_speaker)
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(dynamicCardBg)
+                    .border(1.dp, dynamicCardBorder, RoundedCornerShape(22.dp))
+                    .padding(16.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .tactileBounce(scaleDown = 0.98f, onClick = { isDropdownExpanded = !isDropdownExpanded }),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Left Badge / Indicator:
+                    // If Bluetooth is active and battery level is known -> Circular battery gauge
+                    // If Bluetooth is active but battery is unknown -> Headphones icon in badge
+                    // If Phone speaker is active -> Speaker icon badge
+                    if (isBtActive && batteryPercentage != null) {
+                        CircularBatteryGauge(
+                            percentage = batteryPercentage!!,
+                            accentColor = activeAccent,
+                            modifier = Modifier.size(48.dp)
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(com.auralis.music.ui.components.CookieShape(lobes = 8, depth = 0.07f))
+                                .background(dynamicBadgeBg),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = if (isBtActive || (!isBluetoothConnected && connectedDeviceName != null)) Icons.Default.Headphones else Icons.Default.Speaker,
+                                contentDescription = null,
+                                tint = activeAccent,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(14.dp))
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (isBtActive) {
+                                Icon(
+                                    imageVector = Icons.Default.Bluetooth,
+                                    contentDescription = null,
+                                    tint = activeAccent,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                            }
+                            Text(
+                                text = deviceTitle,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                fontSize = 16.sp
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        // "Connected" Pill Badge
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(dynamicBadgeBg)
+                                .padding(horizontal = 10.dp, vertical = 3.dp)
+                        ) {
+                            Text(
+                                text = str(R.string.connected),
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.White.copy(alpha = 0.90f),
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+
+                    Icon(
+                        imageVector = if (isDropdownExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                        contentDescription = str(R.string.expand_devices),
+                        tint = Color.White.copy(alpha = 0.70f),
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
+                // Expandable audio route switcher list
+                AnimatedVisibility(
+                    visible = isDropdownExpanded,
+                    enter = fadeIn(tween(180)) + expandVertically(tween(220)),
+                    exit = fadeOut(tween(120)) + shrinkVertically(tween(180))
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 14.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(1.dp)
+                                .background(Color.White.copy(alpha = 0.08f))
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Route 1: Connected Bluetooth device (if available)
+                        if (isBluetoothConnected) {
+                            AudioRouteRow(
+                                title = connectedDeviceName ?: str(R.string.bluetooth_device),
+                                subtitle = str(R.string.active_bluetooth_route),
+                                icon = Icons.Default.Bluetooth,
+                                isSelected = !isSpeakerForced,
+                                accentColor = activeAccent,
+                                onClick = {
+                                    switchAudioRoute(toSpeaker = false)
+                                    isDropdownExpanded = false
+                                }
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                        }
+
+                        // Route 2: This Phone
+                        AudioRouteRow(
+                            title = str(R.string.this_phone),
+                            subtitle = str(R.string.internal_device_speaker),
+                            icon = Icons.Default.PhoneAndroid,
+                            isSelected = isSpeakerForced || !isBluetoothConnected,
+                            accentColor = activeAccent,
+                            onClick = {
+                                switchAudioRoute(toSpeaker = true)
+                                isDropdownExpanded = false
+                            }
+                        )
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        // Route 3: System Media Output Switcher panel
+                        AudioRouteRow(
+                            title = str(R.string.system_audio_output),
+                            subtitle = str(R.string.switch_output_via_android_system_panel),
+                            icon = Icons.Default.Settings,
+                            isSelected = false,
+                            accentColor = activeAccent,
+                            onClick = {
+                                isDropdownExpanded = false
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                                    try {
+                                        val panelIntent = Intent("com.android.settings.panel.action.MEDIA_OUTPUT").apply {
+                                            putExtra("com.android.settings.panel.extra.PACKAGE_NAME", context.packageName)
+                                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                        }
+                                        context.startActivity(panelIntent)
+                                        return@AudioRouteRow
+                                    } catch (_: Throwable) {}
+                                }
+                                try {
+                                    context.startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS).apply {
+                                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                    })
+                                } catch (_: Throwable) {}
+                            }
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // ── SECTION 2: VOLUME CONTROL CARD ──
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(dynamicCardBg)
+                    .border(1.dp, dynamicCardBorder, RoundedCornerShape(22.dp))
+                    .padding(16.dp)
+            ) {
+                val volumePercent = (systemVolumeFraction * 100f).roundToInt()
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.VolumeUp,
+                            contentDescription = str(R.string.volume),
+                            tint = Color.White.copy(alpha = 0.85f),
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = str(R.string.volume),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            fontSize = 15.sp
+                        )
+                    }
+
+                    // Percentage Badge Pill
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .border(1.dp, Color.White.copy(alpha = 0.22f), RoundedCornerShape(12.dp))
+                            .padding(horizontal = 10.dp, vertical = 3.dp)
+                    ) {
+                        Text(
+                            text = "$volumePercent%",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White.copy(alpha = 0.90f),
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Custom thick tactile volume pill slider with dynamic thumb
+                BoxWithConstraints(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(36.dp)
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(dynamicVolumeTrackBg)
+                        .pointerInput(maxVolume) {
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                down.consume()
+                                val fraction = (down.position.x / size.width).coerceIn(0f, 1f)
+                                systemVolumeFraction = fraction
+                                val targetStep = (fraction * maxVolume).roundToInt()
+                                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, targetStep, 0)
+
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull() ?: break
+                                    if (!change.pressed) break
+                                    change.consume()
+                                    val dragFraction = (change.position.x / size.width).coerceIn(0f, 1f)
+                                    systemVolumeFraction = dragFraction
+                                    val dragStep = (dragFraction * maxVolume).roundToInt()
+                                    audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, dragStep, 0)
+                                }
+                            }
+                        },
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    val trackWidth = maxWidth
+                    val thumbSize = 28.dp
+                    val thumbInset = 4.dp
+                    // The fill always wraps the thumb (even at 0%), so the thumb rides inside it.
+                    val minFill = thumbSize + thumbInset * 2
+                    val fillWidth = minFill + (trackWidth - minFill) * systemVolumeFraction
+
+                    Box(
+                        modifier = Modifier
+                            .width(fillWidth)
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(dynamicVolumeFill)
+                    )
+
+                    // Wavy "cookie" thumb that turns as it moves, like a dial being rolled along.
+                    Box(
+                        modifier = Modifier
+                            .offset(x = fillWidth - thumbSize - thumbInset)
+                            .size(thumbSize)
+                            .graphicsLayer { rotationZ = systemVolumeFraction * 720f }
+                            .clip(com.auralis.music.ui.components.CookieShape(lobes = 12, depth = 0.07f))
+                            .background(dynamicVolumeThumb)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // ── SECTION 3: AUDIO QUALITY CARD ──
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(dynamicCardBg)
+                    .border(1.dp, dynamicCardBorder, RoundedCornerShape(22.dp))
+                    .padding(16.dp)
+            ) {
+                Text(
+                    text = str(R.string.audio_quality),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    fontSize = 15.sp
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // 3-Option Segmented Pill (Auto | High | Low) with solid dynamic active pill
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(44.dp)
+                        .clip(RoundedCornerShape(22.dp))
+                        .background(Color.White.copy(alpha = 0.05f))
+                        .border(1.dp, Color.White.copy(alpha = 0.05f), RoundedCornerShape(22.dp))
+                        .padding(3.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    AudioQualitySegment(
+                        label = str(R.string.auto),
+                        isSelected = currentQuality == AudioQuality.AUTO,
+                        activeColor = activeAccent,
+                        onActiveTextColor = onAccentTextColor,
+                        onClick = { onAudioQualityChange(AudioQuality.AUTO) },
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    AudioQualitySegment(
+                        label = str(R.string.high),
+                        isSelected = currentQuality == AudioQuality.HIGH,
+                        activeColor = activeAccent,
+                        onActiveTextColor = onAccentTextColor,
+                        onClick = { onAudioQualityChange(AudioQuality.HIGH) },
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    AudioQualitySegment(
+                        label = str(R.string.low),
+                        isSelected = currentQuality == AudioQuality.LOW,
+                        activeColor = activeAccent,
+                        onActiveTextColor = onAccentTextColor,
+                        onClick = { onAudioQualityChange(AudioQuality.LOW) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+    }
+}
+
+/**
+ * Circular Battery Gauge with dynamic progress ring and percentage text.
+ */
+@Composable
+private fun CircularBatteryGauge(
+    percentage: Int,
+    accentColor: Color,
+    modifier: Modifier = Modifier
+) {
+    val progress = (percentage / 100f).coerceIn(0f, 1f)
+    val animatedProgress by animateFloatAsState(
+        targetValue = progress,
+        animationSpec = tween(400, easing = FastOutSlowInEasing),
+        label = "batteryProgress"
+    )
+
+    Box(
+        modifier = modifier,
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize().padding(3.dp)) {
+            val strokeWidthPx = 3.dp.toPx()
+            val diameter = size.minDimension - strokeWidthPx
+            val topLeft = Offset(strokeWidthPx / 2f, strokeWidthPx / 2f)
+            val arcSize = Size(diameter, diameter)
+
+            // Background track
+            drawArc(
+                color = accentColor.copy(alpha = 0.22f),
+                startAngle = -90f,
+                sweepAngle = 360f,
+                useCenter = false,
+                topLeft = topLeft,
+                size = arcSize,
+                style = Stroke(width = strokeWidthPx, cap = StrokeCap.Round)
+            )
+
+            // Filled progress arc
+            drawArc(
+                color = accentColor,
+                startAngle = -90f,
+                sweepAngle = 360f * animatedProgress,
+                useCenter = false,
+                topLeft = topLeft,
+                size = arcSize,
+                style = Stroke(width = strokeWidthPx, cap = StrokeCap.Round)
+            )
+        }
+
+        Text(
+            text = "$percentage%",
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.ExtraBold,
+            color = Color.White,
+            fontSize = 11.sp
+        )
+    }
+}
+
+/**
+ * Single Segment in the Audio Quality Picker with dynamic active pill.
+ */
+@Composable
+private fun AudioQualitySegment(
+    label: String,
+    isSelected: Boolean,
+    activeColor: Color,
+    onActiveTextColor: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val bgAnim by animateColorAsState(
+        targetValue = if (isSelected) activeColor else Color.Transparent,
+        animationSpec = tween(180),
+        label = "segmentBg"
+    )
+    val textAnim by animateColorAsState(
+        targetValue = if (isSelected) onActiveTextColor else Color.White.copy(alpha = 0.70f),
+        animationSpec = tween(180),
+        label = "segmentText"
+    )
+
+    Box(
+        modifier = modifier
+            .fillMaxHeight()
+            .clip(RoundedCornerShape(19.dp))
+            .background(bgAnim)
+            .tactileBounce(scaleDown = 0.94f, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            color = textAnim,
+            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+            fontSize = 14.sp
+        )
+    }
+}
+
+/**
+ * Route row item inside expandable device dropdown.
+ */
+@Composable
+private fun AudioRouteRow(
+    title: String,
+    subtitle: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    isSelected: Boolean,
+    accentColor: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = if (isSelected) accentColor else Color.White.copy(alpha = 0.65f),
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                color = if (isSelected) accentColor else Color.White,
+                fontSize = 14.sp
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.White.copy(alpha = 0.50f),
+                fontSize = 12.sp
+            )
+        }
+        if (isSelected) {
+            Icon(
+                imageVector = Icons.Default.Check,
+                contentDescription = str(R.string.selected),
+                tint = accentColor,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+    }
+}

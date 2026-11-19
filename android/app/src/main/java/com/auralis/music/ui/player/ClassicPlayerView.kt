@@ -1,0 +1,3396 @@
+package com.auralis.music.ui.player
+
+import com.auralis.music.R
+import com.auralis.music.ui.i18n.str
+
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.media.AudioManager
+import android.os.Build
+import android.provider.Settings
+import android.widget.Toast
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.draw.drawWithContent
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.hazeEffect
+import dev.chrisbanes.haze.hazeSource
+import androidx.compose.ui.graphics.Brush
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.TimeoutCancellationException
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.ui.zIndex
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.lazy.items
+import androidx.compose.runtime.mutableIntStateOf
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
+import sh.calvin.reorderable.rememberScroller
+import com.auralis.music.ui.components.QueueTrackItem
+import com.auralis.music.ui.components.createQueueTrackItem
+import com.auralis.music.ui.components.syncLocalQueueWithSnapshot
+import com.auralis.music.domain.model.QueueOperations
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitVerticalTouchSlopOrCancellation
+import androidx.compose.foundation.gestures.verticalDrag
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
+import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
+import androidx.compose.material.icons.automirrored.filled.VolumeMute
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.DragHandle
+import androidx.compose.material.icons.filled.FastForward
+import androidx.compose.material.icons.filled.FastRewind
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Bedtime
+import androidx.compose.material.icons.filled.Devices
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Repeat
+import androidx.compose.material.icons.filled.RepeatOne
+import androidx.compose.material.icons.filled.Shuffle
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.toMutableStateList
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.Velocity
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.zIndex
+import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.roundToInt
+import kotlinx.coroutines.isActive
+import coil.compose.AsyncImage
+import com.auralis.music.data.service.PlaybackClockSource
+import com.auralis.music.domain.model.Artist
+import com.auralis.music.domain.model.LyricsMode
+import com.auralis.music.domain.model.RepeatMode
+import com.auralis.music.domain.model.Track
+import com.auralis.music.ui.components.ArtworkCard
+import com.auralis.music.ui.components.AudioOutputIcon
+import com.auralis.music.ui.components.AuralisPlayerSlider
+import com.auralis.music.ui.components.getHighResArtworkUrl
+import com.auralis.music.ui.components.tactileBounce
+import com.auralis.music.ui.lyrics.SyncedLyricsView
+import com.auralis.music.ui.theme.AuralisEasing
+import com.auralis.music.ui.theme.LocalReducedMotion
+import com.auralis.music.ui.viewmodel.PlayerUiState
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlin.math.roundToInt
+
+val LocalClassicLyricsHazeState = androidx.compose.runtime.compositionLocalOf<dev.chrisbanes.haze.HazeState?> { null }
+
+/**
+ * Classic Player screen displayed when `appearance.newPlayerDesign == false`.
+ * Faithful pixel-accurate reproduction of the classic player interface:
+ * - Top: Centered "Now Playing" and album title
+ * - Center: Square album art with rounded corners and swipe-to-skip pager
+ * - Track info: Marquee title + artist with circular 3-dots and heart buttons on right
+ * - Timeline: Squiggly / Wavy scrubber slider
+ * - Transport: Shuffle, Previous, Play/Pause, Next, Repeat
+ * - Volume: In-player native volume bar
+ * - Bottom utility bar: Queue button, Center capsule (Speaker device + Sleep timer), Lyrics button
+ */
+@Composable
+fun ClassicPlayerView(
+    track: Track,
+    uiState: PlayerUiState,
+    pagerState: PagerState,
+    queue: List<Track>,
+    currentTrackIndex: Int,
+    seekBarPositionState: State<Long>,
+    inlineLyricsPositionState: State<Long> = seekBarPositionState,
+    totalDurationMs: Long,
+    isScrubbing: Boolean,
+    onScrubbing: (Boolean, Long) -> Unit,
+    onSeekTo: (Long) -> Unit,
+    onPlayPauseClick: () -> Unit,
+    onNextClick: () -> Unit,
+    onPreviousClick: () -> Unit,
+    onToggleShuffle: () -> Unit = {},
+    onToggleRepeat: () -> Unit = {},
+    onToggleFavorite: () -> Unit,
+    onDismiss: () -> Unit,
+    onShowMoreOptions: () -> Unit,
+    onShowSleepDialog: () -> Unit,
+    onShowOutputPicker: () -> Unit,
+    onToggleQueue: () -> Unit,
+    onToggleLyrics: () -> Unit,
+    controlsAlpha: Float,
+    enableSwipeToChangeSong: Boolean,
+    hidePlayerThumbnail: Boolean,
+    cropAlbumArt: Boolean,
+    sliderStyle: String = com.auralis.music.ui.theme.LocalAppearanceSettings.current.playerSliderStyle,
+    modifier: Modifier = Modifier,
+    compactHeaderProgress: State<Float>,
+    queueTransportProgress: State<Float>,
+    compactArtworkTargetInRoot: Offset = Offset.Zero,
+    compactMetadataTargetInRoot: Offset = Offset.Zero,
+    compactMetadataTargetSize: IntSize = IntSize.Zero,
+    onHandleBottomMeasured: (Int) -> Unit = {},
+    onTimelineTopMeasured: (Int) -> Unit = {},
+    onControlsBottomSpacerMeasured: (Int) -> Unit = {},
+    headerMotionModifier: Modifier = Modifier,
+    artworkMotionModifier: Modifier = Modifier,
+    metadataMotionModifier: Modifier = Modifier,
+    controlsMotionModifier: Modifier = Modifier,
+    onPlaybackControlsInteraction: () -> Unit = {},
+    showBottomBar: Boolean = true,
+    onArtistClick: ((Artist) -> Unit)? = null
+) {
+    val coroutineScope = rememberCoroutineScope()
+    val displayedTrack = track
+    val artworkContext = LocalContext.current
+    val density = LocalDensity.current
+    val heroActionsEnabled by remember(compactHeaderProgress) {
+        derivedStateOf { compactHeaderProgress.value < 0.5f }
+    }
+    val queueTransportActionsEnabled by remember(queueTransportProgress) {
+        derivedStateOf { queueTransportProgress.value < 0.5f }
+    }
+    val currentOnPlaybackControlsInteraction = rememberUpdatedState(onPlaybackControlsInteraction)
+    val nominalArtworkSizePx = with(density) { ClassicPlayerViewportMotion.CompactArtworkSizeDp.dp.toPx() }
+    var heroArtworkPositionInRoot by remember { mutableStateOf(Offset.Zero) }
+    var heroArtworkWidthPx by remember { mutableFloatStateOf(0f) }
+    var heroMetadataPositionInRoot by remember { mutableStateOf(Offset.Zero) }
+    var heroMetadataSize by remember { mutableStateOf(IntSize.Zero) }
+
+    AdaptivePlayerBody(
+        modifier = modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+            .pointerInput(heroActionsEnabled) {
+                if (!heroActionsEnabled) return@pointerInput
+                // Swipe UP opens the queue. Only an upward drag is claimed: detectVerticalDragGestures
+                // consumed every drag at touch slop (either direction), which starved the sheet's own
+                // drag-down-to-mini-player handler everywhere on the Player, including the handle.
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    var totalDragY = 0f
+                    val drag = awaitVerticalTouchSlopOrCancellation(down.id) { change, over ->
+                        // Leaving a downward slop unconsumed keeps waiting here and lets the
+                        // sheet's detector take the gesture.
+                        if (over < 0f) {
+                            change.consume()
+                            totalDragY = over
+                        }
+                    } ?: return@awaitEachGesture
+                    verticalDrag(drag.id) { change ->
+                        totalDragY += change.positionChange().y
+                        change.consume()
+                    }
+                    if (totalDragY < -36.dp.toPx()) {
+                        onToggleQueue()
+                    }
+                }
+            }
+    ) {
+        val playerFit = LocalPlayerFit.current
+        val spacing = playerSpacingScale()
+        Spacer(modifier = Modifier.playerGap(ideal = 12.dp, minimum = 6.dp))
+        // The handle is ordinary sheet chrome; the existing outer sheet still owns dragging.
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .onGloballyPositioned {
+                    onHandleBottomMeasured(it.positionInRoot().y.roundToInt() + it.size.height)
+                }
+                .padding(bottom = 4.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(width = 48.dp, height = 6.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(Color.White.copy(alpha = 0.34f))
+                    .clickable(onClick = onDismiss)
+            )
+        }
+        Spacer(modifier = Modifier.playerGap(ideal = 10.dp, minimum = 4.dp))
+        // ── 1. TOP HEADER: "Now Playing" + current song name ──
+        ClassicTopBar(
+            songTitle = displayedTrack.title,
+            controlsAlpha = controlsAlpha,
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(headerMotionModifier)
+        )
+
+        // Header-to-cover, cover-to-lyric and lyric-to-title spacing are fixed dp values taken
+        // from the reference phone (432x960dp), so every screen shows the same rhythm. Only a
+        // short screen tightens them; spare height on a tall one goes under the controls.
+        Spacer(modifier = Modifier.playerGap(ideal = 40.dp * spacing, minimum = 4.dp))
+
+        // ── 2. CENTER ALBUM ARTWORK ──
+        // The body sizes this slot: full width-derived square unless every gap and text step
+        // below is already spent.
+        BoxWithConstraints(
+            modifier = Modifier.playerArtwork(horizontalInset = 28.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            val artworkSize = minOf(maxWidth - 56.dp, maxHeight)
+            Box(
+            modifier = Modifier
+                .size(artworkSize)
+                .onGloballyPositioned { coordinates ->
+                    if (compactHeaderProgress.value <= 0.001f || heroArtworkWidthPx == 0f) {
+                        heroArtworkPositionInRoot = coordinates.positionInRoot()
+                        heroArtworkWidthPx = coordinates.size.width.toFloat()
+                    }
+                }
+                .then(artworkMotionModifier)
+                .graphicsLayer {
+                    transformOrigin = TransformOrigin(0f, 0f)
+                    val compactScale = if (heroArtworkWidthPx > 0f) {
+                        (nominalArtworkSizePx / heroArtworkWidthPx).coerceIn(0.12f, 0.4f)
+                    } else {
+                        1f
+                    }
+                    val progress = compactHeaderProgress.value.coerceIn(0f, 1f)
+                    val animatedScale = 1f + (compactScale - 1f) * progress
+                    scaleX = animatedScale
+                    scaleY = animatedScale
+                    translationX = (compactArtworkTargetInRoot.x - heroArtworkPositionInRoot.x) * progress
+                    translationY = (compactArtworkTargetInRoot.y - heroArtworkPositionInRoot.y) * progress
+                    // Keep a visible radius in screen pixels as the sleeve shrinks.
+                    shape = RoundedCornerShape((24.dp.toPx() * (1f - progress) + 12.dp.toPx() * progress) / animatedScale)
+                    clip = progress > 0.001f
+                }
+                // Cache the sleeve separately from its changing transform and clip.
+                .graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen },
+            contentAlignment = Alignment.Center
+        ) {
+            if (!hidePlayerThumbnail) {
+                val artworkShape = remember { RoundedCornerShape(24.dp) }
+                val coverAtRest by remember(compactHeaderProgress) {
+                    derivedStateOf { compactHeaderProgress.value <= 0.001f }
+                }
+
+                if (queue.isNotEmpty()) {
+                    HorizontalPager(
+                        state = pagerState,
+                        key = { page -> "${queue.getOrNull(page)?.id.orEmpty()}_$page" },
+                        userScrollEnabled = enableSwipeToChangeSong,
+                        beyondViewportPageCount = 1,
+                        flingBehavior = androidx.compose.foundation.pager.PagerDefaults.flingBehavior(
+                            state = pagerState,
+                            snapPositionalThreshold = 0.35f
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(1f)
+                    ) { pageIndex ->
+                        val pageTrack = if (queue.isNotEmpty() && pageIndex in queue.indices) {
+                            val qTrack = queue[pageIndex]
+                            if (qTrack.id == track.id) track else qTrack
+                        } else {
+                            track
+                        }
+                        androidx.compose.runtime.key(pageTrack.id) {
+                            // Match adjacent-artwork prefetch so a swipe reuses the decoded bitmap.
+                            val artworkRequest = remember(artworkContext, pageTrack.thumbnail) {
+                                coil.request.ImageRequest.Builder(artworkContext)
+                                    .data(getHighResArtworkUrl(pageTrack.thumbnail))
+                                    .size(600, 600)
+                                    .allowHardware(true)
+                                    .crossfade(true)
+                                    .build()
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .graphicsLayer {
+                                        val pageOffset = kotlin.math.abs((pagerState.currentPage - pageIndex) + pagerState.currentPageOffsetFraction)
+                                            .coerceIn(0f, 1f)
+                                        val scale = 1f - (pageOffset * 0.15f)
+                                        scaleX = scale
+                                        scaleY = scale
+                                    }
+                                    .drawWithContent {
+                                        drawContent()
+                                        val pageOffset = kotlin.math.abs((pagerState.currentPage - pageIndex) + pagerState.currentPageOffsetFraction)
+                                            .coerceIn(0f, 1f)
+                                        if (pageOffset > 0.001f) {
+                                            drawRoundRect(
+                                                color = Color.Black,
+                                                alpha = (pageOffset * 0.70f).coerceIn(0f, 0.70f),
+                                                cornerRadius = CornerRadius(with(density) { 24.dp.toPx() })
+                                            )
+                                        }
+                                    }
+                                    .graphicsLayer {
+                                        shape = artworkShape
+                                        shadowElevation = if (coverAtRest) 14.dp.toPx() else 0f
+                                        ambientShadowColor = Color.Black.copy(alpha = .5f)
+                                        spotShadowColor = Color.Black.copy(alpha = .5f)
+                                    }
+                                    .clip(artworkShape)
+                                    .background(Color.Black.copy(alpha = 0.35f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                // Small cover first: usually already in memory from the queue / mini
+                                // player, so a song change never shows an empty box while the
+                                // high-res artwork below fades in over it.
+                                ArtworkCard(
+                                    url = pageTrack.thumbnail,
+                                    modifier = Modifier.fillMaxSize(),
+                                    cornerRadius = 0.dp,
+                                    contentScale = if (cropAlbumArt) ContentScale.Crop else ContentScale.Fit,
+                                    crossfade = false
+                                )
+                                AsyncImage(
+                                    model = artworkRequest,
+                                    contentDescription = pageTrack.title,
+                                    contentScale = if (cropAlbumArt) ContentScale.Crop else ContentScale.Fit,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                                if (pageTrack.id == uiState.currentTrack?.id) {
+                                    AnimatedCover(
+                                        pageTrack,
+                                        uiState.isPlaying && coverAtRest && !pagerState.isScrollInProgress,
+                                        Modifier.fillMaxSize(),
+                                        visible = coverAtRest && !pagerState.isScrollInProgress
+                                    )
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(1f)
+                            .shadow(
+                                elevation = 14.dp,
+                                shape = artworkShape,
+                                ambientColor = Color.Black.copy(alpha = 0.50f),
+                                spotColor = Color.Black.copy(alpha = 0.50f)
+                            )
+                            .clip(artworkShape)
+                            .background(Color.Black.copy(alpha = 0.35f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        AsyncImage(
+                            model = getHighResArtworkUrl(displayedTrack.thumbnail),
+                            contentDescription = displayedTrack.title,
+                            contentScale = if (cropAlbumArt) ContentScale.Crop else ContentScale.Fit,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                        AnimatedCover(displayedTrack, uiState.isPlaying && coverAtRest, Modifier.fillMaxSize(), visible = coverAtRest)
+                    }
+                }
+            } else {
+                Spacer(modifier = Modifier.height(60.dp))
+            }
+        }
+
+        }
+
+        Spacer(modifier = Modifier.playerGap(ideal = 13.dp * spacing, minimum = 4.dp))
+
+        if (!uiState.showInlineLyrics) {
+            // Hidden preview keeps its room, so nothing moves when it is toggled; on a short
+            // screen this empty room is the first height given back.
+            Spacer(modifier = Modifier.playerGap(ideal = inlineLyricsSlotHeight(), minimum = 0.dp))
+        } else Box(
+            modifier = Modifier.fillMaxWidth()
+                .graphicsLayer { alpha = 1f - compactHeaderProgress.value },
+            contentAlignment = Alignment.Center
+        ) {
+            run {
+                InlinePlayerLyrics(
+                    lyrics = uiState.lyrics,
+                    positionState = inlineLyricsPositionState,
+                    offsetMs = uiState.lyricsOffsetMs,
+                    isLoading = uiState.isLoadingLyrics,
+                    trackId = uiState.currentTrack?.id,
+                    isPlaying = uiState.isPlaying,
+                    isBuffering = uiState.isBuffering,
+                    onOpenFullLyrics = onToggleLyrics,
+                    modifier = Modifier.padding(horizontal = 26.dp)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.playerGap(ideal = 15.dp * spacing, minimum = 4.dp))
+
+        // ── 3. TRACK INFO & ACTIONS ROW (TITLE/ARTIST + OVERFLOW & LIKE BUTTONS) ──
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 26.dp)
+                .onGloballyPositioned { coordinates ->
+                    if (compactHeaderProgress.value <= 0.001f || heroMetadataPositionInRoot == Offset.Zero) {
+                        heroMetadataPositionInRoot = coordinates.positionInRoot()
+                    }
+                    heroMetadataSize = coordinates.size
+                }
+                .then(metadataMotionModifier)
+                .graphicsLayer {
+                    // The title never travels. It fades out in place as the cover starts to
+                    // move; the compact header's own title is revealed at its final spot, under
+                    // the shrinking cover. A travelling title dragged across the incoming content.
+                    alpha = controlsAlpha * ClassicPlayerViewportMotion.expandedMetadataAlpha(compactHeaderProgress.value)
+                }
+        ) {
+            AdaptiveTrackActions {
+            Column {
+                Text(
+                    text = displayedTrack.title,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontSize = 21.sp * playerFit.titleScale,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(3.dp))
+                Text(
+                    text = displayedTrack.artist,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontSize = 15.sp * playerFit.artistScale,
+                    fontWeight = FontWeight.Normal,
+                    color = Color.White.copy(alpha = 0.75f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.clickable(enabled = heroActionsEnabled) {
+                        onArtistClick?.invoke(
+                            Artist(
+                                id = "",
+                                name = displayedTrack.artist,
+                                thumbnail = displayedTrack.thumbnail
+                            )
+                        )
+                    }
+                )
+            }
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+            // 3-dots Overflow Menu button
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .graphicsLayer {
+                        alpha = ClassicPlayerViewportMotion.expandedActionsAlpha(compactHeaderProgress.value)
+                    }
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.16f))
+                    .then(
+                        if (heroActionsEnabled) Modifier.tactileBounce(scaleDown = 0.88f, onClick = onShowMoreOptions)
+                        else Modifier
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.MoreVert,
+                    contentDescription = str(R.string.more_options),
+                    tint = Color.White,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(10.dp))
+
+            // Like / Favorite button
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .graphicsLayer {
+                        alpha = ClassicPlayerViewportMotion.expandedActionsAlpha(compactHeaderProgress.value)
+                    }
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.16f))
+                    .then(
+                        if (heroActionsEnabled) Modifier.tactileBounce(scaleDown = 0.88f, onClick = onToggleFavorite)
+                        else Modifier
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = if (uiState.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                    contentDescription = if (uiState.isFavorite) str(R.string.unlike) else str(R.string.like),
+                    tint = if (uiState.isFavorite) Color(0xFFFF4081) else Color.White,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+        }
+
+        }
+        }
+
+        Spacer(modifier = Modifier.playerGap(ideal = 10.dp, minimum = 6.dp))
+
+        // A single draw layer keeps the timeline, transport, and volume in lockstep
+        // while the queue/lyrics viewport keeps its own measured bounds.
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .then(controlsMotionModifier)
+                // This measured column is the actual control hit region. Being a pointer-input
+                // ancestor lets buttons/sliders keep their gestures while preventing a higher
+                // full-screen Lyrics handler from becoming the hit target for gaps between them.
+                .classicPlaybackControlsInteraction(currentOnPlaybackControlsInteraction)
+        ) {
+            ClassicCompactPlaybackControls(
+                track = displayedTrack,
+                uiState = uiState,
+                seekBarPositionState = seekBarPositionState,
+                totalDurationMs = totalDurationMs,
+                isScrubbing = isScrubbing,
+                onScrubbing = onScrubbing,
+                onSeekTo = onSeekTo,
+                onPlayPauseClick = onPlayPauseClick,
+                onPreviousClick = onPreviousClick,
+                onNextClick = onNextClick,
+                onToggleShuffle = onToggleShuffle,
+                onToggleRepeat = onToggleRepeat,
+                sliderStyle = sliderStyle,
+                controlsAlpha = controlsAlpha,
+                // Shuffle and Repeat belong to the bottom utility squircle.
+                showTransportPills = false,
+                onTimelinePositioned = onTimelineTopMeasured,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 6.dp)
+            )
+        }
+
+        Spacer(
+            modifier = Modifier
+                .playerGap(ideal = 16.dp, minimum = 6.dp, grow = 1f)
+                .onGloballyPositioned { coordinates ->
+                    if (coordinates.size.height > 0) {
+                        onControlsBottomSpacerMeasured(coordinates.size.height)
+                    }
+                }
+        )
+
+        // ── 7. BOTTOM UTILITY BAR (QUEUE, DEVICE/TIMER CAPSULE, LYRICS) ──
+        if (showBottomBar) {
+            ClassicBottomBar(
+                isQueueActive = false,
+                isLyricsActive = false,
+                isTimerActive = uiState.sleepTimerSeconds > 0 || uiState.isSleepTimerEndOfSong,
+                isShuffled = uiState.isShuffled,
+                repeatMode = uiState.repeatMode,
+                onToggleQueue = onToggleQueue,
+                onToggleShuffle = onToggleShuffle,
+                onToggleRepeat = onToggleRepeat,
+                onShowOutputPicker = onShowOutputPicker,
+                onShowSleepDialog = onShowSleepDialog,
+                onToggleLyrics = onToggleLyrics,
+                controlsAlpha = controlsAlpha,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 6.dp)
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+        }
+    }
+}
+
+/**
+ * Centered top header showing "Now Playing" and the current song title.
+ */
+@Composable
+fun ClassicTopBar(
+    songTitle: String,
+    controlsAlpha: Float,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier.graphicsLayer { alpha = controlsAlpha },
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 56.dp)
+        ) {
+            Text(
+                text = str(R.string.now_playing),
+                style = MaterialTheme.typography.titleMedium,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color.White,
+                textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = songTitle,
+                style = MaterialTheme.typography.bodySmall,
+                fontSize = 13.sp,
+                color = Color.White.copy(alpha = 0.70f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+/**
+ * Clean interactive slider dynamically adapting to the user's seekbar settings (Default, Wavy, Slim, Squiggly).
+ */
+@Composable
+fun ClassicTimelineSlider(
+    positionState: State<Long>,
+    totalDurationMs: Long,
+    isPlaying: Boolean,
+    sliderStyle: String,
+    isScrubbing: Boolean,
+    onScrubbing: (Boolean, Long) -> Unit,
+    onSeekTo: (Long) -> Unit,
+    controlsAlpha: Float,
+    modifier: Modifier = Modifier
+) {
+    val currentPosMs = positionState.value
+    var localDragFraction by remember { mutableFloatStateOf(0f) }
+
+    val displayPosMs = if (isScrubbing) {
+        (localDragFraction * totalDurationMs).toLong()
+    } else {
+        currentPosMs
+    }
+
+    val sliderFraction = if (totalDurationMs > 0) {
+        (displayPosMs.toFloat() / totalDurationMs).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+
+    AuralisPlayerSlider(
+        value = sliderFraction,
+        onValueChange = { frac ->
+            localDragFraction = frac
+            val targetMs = (frac * totalDurationMs).toLong()
+            onScrubbing(true, targetMs)
+        },
+        onValueChangeFinished = {
+            val targetMs = (localDragFraction * totalDurationMs).toLong()
+            onScrubbing(false, targetMs)
+            onSeekTo(targetMs)
+        },
+        isPlaying = isPlaying,
+        currentPosMs = displayPosMs,
+        totalDurationMs = totalDurationMs,
+        sliderStyle = sliderStyle,
+        activeTrackColor = Color.White,
+        inactiveTrackColor = Color.White.copy(alpha = 0.25f),
+        thumbColor = Color.White,
+        textColor = Color.White.copy(alpha = 0.70f),
+        modifier = modifier.graphicsLayer { alpha = controlsAlpha }
+    )
+}
+
+/**
+ * In-Player Volume Slider synced with Android's AudioManager.STREAM_MUSIC.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun InPlayerVolumeSlider(
+    controlsAlpha: Float,
+    modifier: Modifier = Modifier
+) {
+    LocalPlayerDemoControls.current?.let { demo ->
+        PlayerVolumeControls(demo.volume.value, { demo.volume.value = it }, controlsAlpha, modifier)
+        return
+    }
+    val context = LocalContext.current
+    val audioManager = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
+    val maxVolume = remember {
+        audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC).toFloat().coerceAtLeast(1f)
+    }
+
+    var systemVolume by remember {
+        mutableFloatStateOf(
+            (audioManager.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() / maxVolume).coerceIn(0f, 1f)
+        )
+    }
+
+    DisposableEffect(context) {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(c: Context?, intent: Intent?) {
+                if (intent?.action == "android.media.VOLUME_CHANGED_ACTION" ||
+                    intent?.action == "android.media.STREAM_DEVICES_CHANGED_ACTION") {
+                    systemVolume = (audioManager.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() / maxVolume).coerceIn(0f, 1f)
+                }
+            }
+        }
+        val filter = IntentFilter().apply {
+            addAction("android.media.VOLUME_CHANGED_ACTION")
+            addAction("android.media.STREAM_DEVICES_CHANGED_ACTION")
+        }
+        context.registerReceiver(receiver, filter)
+        onDispose {
+            try {
+                context.unregisterReceiver(receiver)
+            } catch (_: Exception) {}
+        }
+    }
+
+    PlayerVolumeControls(systemVolume, { newVolume ->
+        systemVolume = newVolume
+        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, (newVolume * maxVolume).roundToInt(), 0)
+    }, controlsAlpha, modifier)
+}
+
+/** Shared rendering for the live player and the tour; only the volume sink differs. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PlayerVolumeControls(
+    volume: Float,
+    onVolumeChange: (Float) -> Unit,
+    controlsAlpha: Float,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier.graphicsLayer { alpha = controlsAlpha },
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Speaker Low / Mute icon
+        IconButton(
+            onClick = {
+                onVolumeChange(0f)
+            },
+            modifier = Modifier.size(28.dp)
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.VolumeMute,
+                contentDescription = str(R.string.mute),
+                tint = Color.White.copy(alpha = 0.80f),
+                modifier = Modifier.size(20.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.width(6.dp))
+
+        // Volume track (no thumb)
+        Slider(
+            value = volume,
+            onValueChange = onVolumeChange,
+            thumb = {},
+            track = { sliderState ->
+                val fraction = sliderState.value
+                Canvas(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(7.dp)
+                ) {
+                    val h = size.height
+                    val w = size.width
+                    val activeW = w * fraction
+                    // Inactive track
+                    drawRoundRect(
+                        color = Color.White.copy(alpha = 0.22f),
+                        size = Size(w, h),
+                        cornerRadius = CornerRadius(h / 2, h / 2)
+                    )
+                    // Active track
+                    if (activeW > 0f) {
+                        drawRoundRect(
+                            color = Color.White.copy(alpha = 0.88f),
+                            size = Size(activeW, h),
+                            cornerRadius = CornerRadius(h / 2, h / 2)
+                        )
+                    }
+                }
+            },
+            modifier = Modifier
+                .weight(1f)
+                .height(28.dp)
+        )
+
+        Spacer(modifier = Modifier.width(6.dp))
+
+        // Speaker Max icon
+        IconButton(
+            onClick = {
+                onVolumeChange(1f)
+            },
+            modifier = Modifier.size(28.dp)
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.VolumeUp,
+                contentDescription = str(R.string.max_volume),
+                tint = Color.White.copy(alpha = 0.80f),
+                modifier = Modifier.size(20.dp)
+            )
+        }
+    }
+}
+
+/**
+ * Playback Controls used in Queue and Lyrics panels:
+ * Exact pixel-match to Main Player's sizing, icons, paddings, and touch targets.
+ */
+/** Opens the lyrics source picker from the old player's lyrics panel; null hides its caption. */
+internal val LocalLyricsSourcePicker = androidx.compose.runtime.staticCompositionLocalOf<(() -> Unit)?> { null }
+
+/** Opens Auralis Connect's device picker; null while Connect is off, which hides its button. */
+internal val LocalConnectDevicesAction = androidx.compose.runtime.compositionLocalOf<(() -> Unit)?> { null }
+
+@Composable
+fun ClassicCompactPlaybackControls(
+    track: Track,
+    uiState: PlayerUiState,
+    seekBarPositionState: State<Long>,
+    totalDurationMs: Long,
+    isScrubbing: Boolean,
+    onScrubbing: (Boolean, Long) -> Unit,
+    onSeekTo: (Long) -> Unit,
+    onPlayPauseClick: () -> Unit,
+    onPreviousClick: () -> Unit,
+    onNextClick: () -> Unit,
+    sliderStyle: String,
+    modifier: Modifier = Modifier,
+    onToggleShuffle: (() -> Unit)? = null,
+    onToggleRepeat: (() -> Unit)? = null,
+    controlsAlpha: Float = 1f,
+    showTransportPills: Boolean = false,
+    onTimelinePositioned: ((Int) -> Unit)? = null,
+    /** Shown just above the timeline (the lyrics panel puts its "Lyrics by" caption here). */
+    caption: (@Composable () -> Unit)? = null
+) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        if (caption != null) {
+            Box(
+                modifier = Modifier.fillMaxWidth().padding(start = 30.dp, end = 30.dp, bottom = 10.dp),
+                contentAlignment = Alignment.CenterStart
+            ) { caption() }
+        }
+        // 1. Timeline Scrubber Slider - Exact match to main player (padding horizontal = 26.dp)
+        ClassicTimelineSlider(
+            positionState = seekBarPositionState,
+            totalDurationMs = totalDurationMs,
+            isPlaying = uiState.isPlaying,
+            sliderStyle = sliderStyle,
+            isScrubbing = isScrubbing,
+            onScrubbing = onScrubbing,
+            onSeekTo = onSeekTo,
+            controlsAlpha = controlsAlpha,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 26.dp)
+                .then(
+                    if (onTimelinePositioned != null) {
+                        Modifier.onGloballyPositioned { onTimelinePositioned(it.positionInRoot().y.roundToInt()) }
+                    } else Modifier
+                )
+        )
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // 2. Transport Controls Row - Exact match to main player (padding horizontal = 24.dp)
+        val shuffleTint by animateColorAsState(
+            targetValue = if (uiState.isShuffled) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.70f),
+            label = "compactShuffleTint"
+        )
+        val repeatActive = uiState.repeatMode != RepeatMode.OFF
+        val repeatTint by animateColorAsState(
+            targetValue = if (repeatActive) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.70f),
+            label = "compactRepeatTint"
+        )
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 28.dp)
+                .graphicsLayer { alpha = controlsAlpha },
+            // Without the side pills the three transport buttons sit grouped in the middle.
+            horizontalArrangement = if (showTransportPills) Arrangement.SpaceBetween
+                else Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (showTransportPills && onToggleShuffle != null) {
+                // Shuffle Button (size 46dp, icon 24dp)
+                IconButton(
+                    onClick = onToggleShuffle,
+                    modifier = Modifier
+                        .size(46.dp)
+                        .tactileBounce(scaleDown = 0.86f)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Shuffle,
+                        contentDescription = str(R.string.shuffle),
+                        tint = shuffleTint,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
+
+            // Previous (64dp target, bold rounded double triangle)
+            IconButton(
+                onClick = onPreviousClick,
+                modifier = Modifier
+                    .size(64.dp)
+                    .tactileBounce(scaleDown = 0.85f)
+                    .semantics { contentDescription = str(R.string.previous) }
+            ) {
+                ClassicSkipGlyph(forward = false, color = Color.White, modifier = Modifier.size(width = 46.dp, height = 28.dp))
+            }
+
+            // Play / Pause (76dp target)
+            IconButton(
+                onClick = onPlayPauseClick,
+                modifier = Modifier
+                    .size(76.dp)
+                    .tactileBounce(scaleDown = 0.88f)
+                    .semantics { contentDescription = if (uiState.isPlaying) str(R.string.pause) else str(R.string.play) }
+            ) {
+                if (uiState.isPlaying) {
+                    ClassicPauseGlyph(color = Color.White, modifier = Modifier.size(width = 34.dp, height = 36.dp))
+                } else {
+                    ClassicPlayGlyph(color = Color.White, modifier = Modifier.size(width = 36.dp, height = 38.dp))
+                }
+            }
+
+            // Next (64dp target)
+            IconButton(
+                onClick = onNextClick,
+                modifier = Modifier
+                    .size(64.dp)
+                    .tactileBounce(scaleDown = 0.85f)
+                    .semantics { contentDescription = str(R.string.next) }
+            ) {
+                ClassicSkipGlyph(forward = true, color = Color.White, modifier = Modifier.size(width = 46.dp, height = 28.dp))
+            }
+
+            if (showTransportPills && onToggleRepeat != null) {
+                // Repeat Button (size 46dp, icon 24dp)
+                IconButton(
+                    onClick = onToggleRepeat,
+                    modifier = Modifier
+                        .size(46.dp)
+                        .tactileBounce(scaleDown = 0.86f)
+                ) {
+                    Icon(
+                        imageVector = if (uiState.repeatMode == RepeatMode.ONE) Icons.Filled.RepeatOne else Icons.Filled.Repeat,
+                        contentDescription = str(R.string.repeat),
+                        tint = repeatTint,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        // 3. In-Player Volume Slider - Exact match to main player (padding horizontal = 26.dp)
+        InPlayerVolumeSlider(
+            controlsAlpha = controlsAlpha,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 26.dp)
+        )
+    }
+}
+
+/**
+ * Reusable Classic Bottom Navigation Bar:
+ * - Left: Queue button
+ * - Center: Capsule pill (Shuffle, Repeat and Device Output)
+ * - Right: Lyrics button
+ */
+@Composable
+fun ClassicBottomBar(
+    isQueueActive: Boolean,
+    isLyricsActive: Boolean,
+    isTimerActive: Boolean,
+    isShuffled: Boolean = false,
+    repeatMode: RepeatMode = RepeatMode.OFF,
+    onToggleQueue: () -> Unit,
+    onToggleShuffle: () -> Unit = {},
+    onToggleRepeat: () -> Unit = {},
+    onShowOutputPicker: () -> Unit,
+    onShowSleepDialog: () -> Unit,
+    onToggleLyrics: () -> Unit,
+    controlsAlpha: Float,
+    showUtilityActions: Boolean = true,
+    modifier: Modifier = Modifier
+) {
+    val shuffleTint by animateColorAsState(
+        targetValue = if (isShuffled) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.85f),
+        label = "bottomBarShuffleTint"
+    )
+    val repeatTint by animateColorAsState(
+        targetValue = if (repeatMode != RepeatMode.OFF) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.85f),
+        label = "bottomBarRepeatTint"
+    )
+
+    Row(
+        modifier = modifier.graphicsLayer { alpha = controlsAlpha },
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Left: Queue Button
+        IconButton(
+            onClick = onToggleQueue,
+            modifier = Modifier
+                .size(44.dp)
+                .tactileBounce(scaleDown = 0.88f)
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.FormatListBulleted,
+                contentDescription = str(R.string.queue),
+                tint = if (isQueueActive) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.85f),
+                modifier = Modifier.size(26.dp)
+            )
+        }
+
+        if (showUtilityActions) {
+            // Main Player and Lyrics keep all four utilities together here. Queue owns
+            // the same four actions in its top row and omits this capsule.
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(Color.White.copy(alpha = 0.14f))
+                    .border(0.5.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(22.dp))
+                    .padding(horizontal = 4.dp, vertical = 3.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(16.dp))
+                        .clickable(onClick = onToggleShuffle)
+                        .padding(horizontal = 9.dp, vertical = 7.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Shuffle,
+                        contentDescription = str(R.string.shuffle),
+                        tint = shuffleTint,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(16.dp))
+                        .clickable(onClick = onToggleRepeat)
+                        .padding(horizontal = 9.dp, vertical = 7.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (repeatMode == RepeatMode.ONE) Icons.Default.RepeatOne else Icons.Default.Repeat,
+                        contentDescription = str(R.string.repeat),
+                        tint = repeatTint,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                // Original listener silhouette with radiating soundwaves.
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(16.dp))
+                        .clickable { onShowOutputPicker() }
+                        .padding(horizontal = 9.dp, vertical = 7.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = AudioOutputIcon,
+                        contentDescription = str(R.string.audio_output),
+                        tint = Color.White.copy(alpha = 0.85f),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                LocalConnectDevicesAction.current?.let { openDevices ->
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(16.dp))
+                            .clickable { openDevices() }
+                            .padding(horizontal = 9.dp, vertical = 7.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Devices,
+                            contentDescription = str(R.string.connect_to_a_device),
+                            tint = Color.White.copy(alpha = 0.85f),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+
+            }
+        }
+
+        // Right: Lyrics Button
+        IconButton(
+            onClick = onToggleLyrics,
+            modifier = Modifier
+                .size(44.dp)
+                .tactileBounce(scaleDown = 0.88f)
+        ) {
+            LyricsQuoteIcon(
+                tint = if (isLyricsActive) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.85f),
+                modifier = Modifier.size(26.dp)
+            )
+        }
+    }
+}
+
+/**
+ * AirPlay audio output icon matching Apple Music's device picker symbol
+ * (upward triangle with concentric radiating sound waves).
+ */
+@Composable
+fun AirPlayAudioIcon(
+    tint: Color,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val strokeW = (w * 0.09f).coerceAtLeast(1.5f)
+
+        // 1. Upward-pointing triangle at bottom center
+        val trianglePath = Path().apply {
+            moveTo(w * 0.50f, h * 0.58f) // apex
+            lineTo(w * 0.72f, h * 0.88f) // bottom-right
+            lineTo(w * 0.28f, h * 0.88f) // bottom-left
+            close()
+        }
+        drawPath(
+            path = trianglePath,
+            color = tint
+        )
+
+        // 2. Concentric audio wave arcs
+        val arcCenterY = h * 0.75f
+        val arcCenterX = w * 0.50f
+
+        // Inner wave
+        val r1 = w * 0.29f
+        drawArc(
+            color = tint,
+            startAngle = 222f,
+            sweepAngle = 96f,
+            useCenter = false,
+            topLeft = Offset(arcCenterX - r1, arcCenterY - r1),
+            size = Size(r1 * 2f, r1 * 2f),
+            style = Stroke(width = strokeW, cap = StrokeCap.Round)
+        )
+
+        // Outer wave
+        val r2 = w * 0.47f
+        drawArc(
+            color = tint,
+            startAngle = 226f,
+            sweepAngle = 88f,
+            useCenter = false,
+            topLeft = Offset(arcCenterX - r2, arcCenterY - r2),
+            size = Size(r2 * 2f, r2 * 2f),
+            style = Stroke(width = strokeW, cap = StrokeCap.Round)
+        )
+    }
+}
+
+/**
+ * Backward compatibility alias for AirPlayAudioIcon.
+ */
+@Composable
+fun SpeakerBoxIcon(
+    tint: Color,
+    modifier: Modifier = Modifier
+) {
+    AirPlayAudioIcon(tint = tint, modifier = modifier)
+}
+
+/**
+ * Chat bubble with quotation marks icon matching the lyrics button in Image 2.
+ */
+@Composable
+fun LyricsQuoteIcon(
+    tint: Color,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val strokeW = 1.8.dp.toPx()
+        val corner = 4.dp.toPx()
+        val bubbleH = h * 0.82f
+
+        // Bubble outline with tail
+        val path = Path().apply {
+            moveTo(corner, 0f)
+            lineTo(w - corner, 0f)
+            quadraticTo(w, 0f, w, corner)
+            lineTo(w, bubbleH - corner)
+            quadraticTo(w, bubbleH, w - corner, bubbleH)
+            lineTo(w * 0.38f, bubbleH)
+            lineTo(w * 0.18f, h) // tail tip
+            lineTo(w * 0.22f, bubbleH)
+            lineTo(corner, bubbleH)
+            quadraticTo(0f, bubbleH, 0f, bubbleH - corner)
+            lineTo(0f, corner)
+            quadraticTo(0f, 0f, corner, 0f)
+            close()
+        }
+        drawPath(
+            path = path,
+            color = tint,
+            style = Stroke(width = strokeW, join = StrokeJoin.Round)
+        )
+
+        // First quote mark
+        drawCircle(
+            color = tint,
+            radius = w * 0.07f,
+            center = Offset(w * 0.38f, bubbleH * 0.44f)
+        )
+        val quote1Tail = Path().apply {
+            moveTo(w * 0.41f, bubbleH * 0.46f)
+            quadraticTo(w * 0.38f, bubbleH * 0.65f, w * 0.32f, bubbleH * 0.66f)
+        }
+        drawPath(
+            path = quote1Tail,
+            color = tint,
+            style = Stroke(width = 1.5.dp.toPx(), cap = StrokeCap.Round)
+        )
+
+        // Second quote mark
+        drawCircle(
+            color = tint,
+            radius = w * 0.07f,
+            center = Offset(w * 0.60f, bubbleH * 0.44f)
+        )
+        val quote2Tail = Path().apply {
+            moveTo(w * 0.63f, bubbleH * 0.46f)
+            quadraticTo(w * 0.60f, bubbleH * 0.65f, w * 0.54f, bubbleH * 0.66f)
+        }
+        drawPath(
+            path = quote2Tail,
+            color = tint,
+            style = Stroke(width = 1.5.dp.toPx(), cap = StrokeCap.Round)
+        )
+    }
+}
+
+/**
+ * Formats milliseconds as m:ss or mm:ss
+ */
+private fun formatClassicTime(millis: Long): String {
+    val totalSeconds = (millis / 1000).coerceAtLeast(0)
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    return String.format("%d:%02d", minutes, seconds)
+}
+
+/**
+ * Top-level container for the Classic Player mode that routes between PLAYER, LYRICS, and QUEUE tabs.
+ */
+internal class ClassicPlayerMotionHolder(
+    val compactHeaderProgress: State<Float>,
+    val topBarAlpha: State<Float>,
+    val topBarTranslationYDp: State<Float>,
+    val lyricsAlpha: State<Float>,
+    val lyricsTranslationYDp: State<Float>,
+    val lyricsScale: State<Float>,
+    val queueAlpha: State<Float>,
+    val queueTranslationYDp: State<Float>,
+    val queueScale: State<Float>,
+    val queueTransportProgress: State<Float>,
+    val transitionProgress: Animatable<Float, *>,
+    val showLyricsLayer: State<Boolean>,
+    val showQueueLayer: State<Boolean>,
+    val lyricsLayerOnScreen: State<Boolean>,
+    val queueLayerOnScreen: State<Boolean>
+)
+
+internal const val HiddenLayerOffsetPx = 1_000_000
+
+/** A hidden tab stops its per-frame lyric motion, and only its own readers recompose on a switch. */
+@Composable
+private fun HiddenLayerMotion(
+    onScreen: State<Boolean>,
+    blurSuspended: State<Boolean>,
+    content: @Composable () -> Unit
+) {
+    androidx.compose.runtime.CompositionLocalProvider(
+        com.auralis.music.ui.theme.LocalPreviewMotionActive provides onScreen.value,
+        com.auralis.music.ui.lyrics.LocalLyricsBlurSuspended provides blurSuspended,
+        content = content
+    )
+}
+
+/** A z-index read at placement, so a change reorders layers without recomposing anything. */
+private fun Modifier.placementZIndex(zIndex: () -> Float): Modifier = layout { measurable, constraints ->
+    val placeable = measurable.measure(constraints)
+    layout(placeable.width, placeable.height) { placeable.place(0, 0, zIndex()) }
+}
+
+@Composable
+internal fun rememberClassicPlayerMotion(
+    currentTab: NowPlayingTab,
+    reducedMotion: Boolean
+): ClassicPlayerMotionHolder {
+    // Linear clock: the per-layer FastOutSlowIn curves (and the faster exit) are applied in
+    // ClassicPlayerViewportMotion.entryAlpha/exitAlpha crossfade.
+    val motionSpec = remember(reducedMotion) {
+        if (reducedMotion) {
+            snap<Float>()
+        } else {
+            tween<Float>(ClassicPlayerViewportMotion.ContentEnterDurationMillis, easing = LinearEasing)
+        }
+    }
+    val heroMotionSpec = remember(reducedMotion) {
+        if (reducedMotion) {
+            snap<Float>()
+        } else {
+            tween<Float>(ClassicPlayerViewportMotion.HeroDurationMillis, easing = ClassicPlayerViewportMotion.HeroEasing)
+        }
+    }
+
+    var transitionFromTab by remember { mutableStateOf(currentTab) }
+    var transitionToTab by remember { mutableStateOf(currentTab) }
+    var transitionStartSnapshot by remember { mutableStateOf<ClassicPlayerViewportMotionValues?>(null) }
+    val transitionProgress = remember { Animatable(1f) }
+
+    LaunchedEffect(currentTab, reducedMotion) {
+        if (currentTab == transitionToTab) {
+            if (reducedMotion) transitionProgress.snapTo(1f)
+            return@LaunchedEffect
+        }
+
+        // A quick second tap must continue from the currently rendered frame.
+        // Resetting the fraction against a tab endpoint made the list flash and
+        // the upward movement restart while the cover was still in flight.
+        transitionStartSnapshot = if (transitionFromTab != transitionToTab && abs(transitionProgress.value - 1f) > 0.001f) {
+            transitionStartSnapshot?.let {
+                ClassicPlayerViewportMotion.retarget(it, transitionToTab, transitionProgress.value)
+            } ?: ClassicPlayerViewportMotion.interpolate(
+                transitionFromTab,
+                transitionToTab,
+                transitionProgress.value
+            )
+        } else null
+        transitionFromTab = transitionToTab
+        transitionToTab = currentTab
+        if (reducedMotion) {
+            transitionProgress.snapTo(1f)
+        } else {
+            transitionProgress.snapTo(0f)
+            transitionProgress.animateTo(1f, animationSpec = motionSpec)
+        }
+    }
+
+    val motionValues = remember(transitionFromTab, transitionToTab, transitionStartSnapshot, transitionProgress, reducedMotion) {
+        derivedStateOf {
+            if (!transitionProgress.isRunning && transitionProgress.value == 1f) {
+                ClassicPlayerViewportMotion.target(transitionToTab)
+            } else if (transitionStartSnapshot != null) {
+                ClassicPlayerViewportMotion.retarget(
+                    start = transitionStartSnapshot!!,
+                    to = transitionToTab,
+                    fraction = transitionProgress.value,
+                    reducedMotion = reducedMotion
+                )
+            } else {
+                ClassicPlayerViewportMotion.interpolate(
+                    from = transitionFromTab,
+                    to = transitionToTab,
+                    fraction = transitionProgress.value,
+                    reducedMotion = reducedMotion
+                )
+            }
+        }
+    }
+
+    // The artwork and metadata share one interruption-safe spring path. The
+    // content follows with a softer upward spring and a short opacity ramp.
+    val heroProgress = remember { Animatable(ClassicPlayerViewportMotion.heroProgressTarget(currentTab)) }
+    val compactHeaderProgress = remember(heroProgress) { heroProgress.asState() }
+    LaunchedEffect(currentTab, reducedMotion) {
+        val target = ClassicPlayerViewportMotion.heroProgressTarget(currentTab)
+        if (reducedMotion) {
+            heroProgress.snapTo(target)
+        } else if (heroProgress.value != target) {
+            // The tab's list spends its first frames being built. Leaving rest after that keeps
+            // the cover out of those long frames; a change mid-flight carries straight on.
+            val atRest = heroProgress.value <= 0.001f || heroProgress.value >= 0.999f
+            if (atRest) repeat(ClassicPlayerViewportMotion.HeroSettleFrames) { withFrameNanos { } }
+            heroProgress.animateTo(target, heroMotionSpec)
+        }
+    }
+    val topBarAlpha = remember(motionValues) { derivedStateOf { motionValues.value.topBar.alpha } }
+    val topBarTranslationYDp = remember(motionValues) { derivedStateOf { motionValues.value.topBar.translationYDp } }
+    val lyricsAlpha = remember(motionValues) { derivedStateOf { motionValues.value.lyrics.alpha } }
+    val lyricsTranslationYDp = remember(motionValues) { derivedStateOf { motionValues.value.lyrics.translationYDp } }
+    val lyricsScale = remember(motionValues) { derivedStateOf { motionValues.value.lyrics.scale } }
+    val queueAlpha = remember(motionValues) { derivedStateOf { motionValues.value.queue.alpha } }
+    val queueTranslationYDp = remember(motionValues) { derivedStateOf { motionValues.value.queue.translationYDp } }
+    val queueScale = remember(motionValues) { derivedStateOf { motionValues.value.queue.scale } }
+    val queueTransportProgress = animateFloatAsState(
+        targetValue = if (currentTab == NowPlayingTab.QUEUE) 1f else 0f,
+        animationSpec = motionSpec,
+        label = "classicQueueTransportProgress"
+    )
+
+    // Never key these on transitionProgress.value: reading an animating value during composition
+    // recomposed the whole player (pager, lyrics, queue, controls) on every frame of every tab
+    // switch. derivedStateOf already tracks it and only notifies when the Boolean flips.
+    // A layer stays composed while it is the current tab, the settled tab (transitionToTab —
+    // i.e. the frame between the tap and the LaunchedEffect that starts the transition), or the
+    // outgoing tab of a running transition. Without the transitionToTab term the outgoing tab
+    // was torn down for that one frame and rebuilt the next (blank frames + a full rebuild of
+    // the queue list on every switch).
+    // An outgoing layer also waits for the cover to land: disposing it at the end of the shorter
+    // crossfade dropped frames while the cover was still in flight.
+    fun layerVisible(tab: NowPlayingTab, snapshotAlpha: Float?): Boolean =
+        currentTab == tab || transitionToTab == tab ||
+            ((transitionProgress.value < 1f || transitionProgress.isRunning ||
+                abs(compactHeaderProgress.value - ClassicPlayerViewportMotion.heroProgressTarget(currentTab)) > 0.001f) &&
+                (transitionFromTab == tab || (snapshotAlpha ?: 0f) > 0.001f))
+    val lyricsLayerOnScreen = remember(currentTab, transitionFromTab, transitionToTab, transitionStartSnapshot) {
+        derivedStateOf { layerVisible(NowPlayingTab.LYRICS, transitionStartSnapshot?.lyrics?.alpha) }
+    }
+    val queueLayerOnScreen = remember(currentTab, transitionFromTab, transitionToTab, transitionStartSnapshot) {
+        derivedStateOf { layerVisible(NowPlayingTab.QUEUE, transitionStartSnapshot?.queue?.alpha) }
+    }
+    // Building the lyric list took ~380ms of 12fps frames, and it happened on every switch, right
+    // as the cover took off. Build both tabs once while the open player is at rest, then keep them
+    // ready off-screen, so a switch only moves things that already exist.
+    var layersPrepared by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        delay(ClassicPlayerViewportMotion.LayerPrepareDelayMillis)
+        layersPrepared = true
+    }
+    val showLyricsLayer = remember(lyricsLayerOnScreen) { derivedStateOf { layersPrepared || lyricsLayerOnScreen.value } }
+    val showQueueLayer = remember(queueLayerOnScreen) { derivedStateOf { layersPrepared || queueLayerOnScreen.value } }
+
+    return remember(
+        motionValues,
+        compactHeaderProgress,
+        topBarAlpha,
+        topBarTranslationYDp,
+        lyricsAlpha,
+        lyricsTranslationYDp,
+        lyricsScale,
+        queueAlpha,
+        queueTranslationYDp,
+        queueScale,
+        queueTransportProgress,
+        transitionProgress,
+        showLyricsLayer,
+        showQueueLayer,
+        lyricsLayerOnScreen,
+        queueLayerOnScreen
+    ) {
+        ClassicPlayerMotionHolder(
+            compactHeaderProgress = compactHeaderProgress,
+            topBarAlpha = topBarAlpha,
+            topBarTranslationYDp = topBarTranslationYDp,
+            lyricsAlpha = lyricsAlpha,
+            lyricsTranslationYDp = lyricsTranslationYDp,
+            lyricsScale = lyricsScale,
+            queueAlpha = queueAlpha,
+            queueTranslationYDp = queueTranslationYDp,
+            queueScale = queueScale,
+            queueTransportProgress = queueTransportProgress,
+            transitionProgress = transitionProgress,
+            showLyricsLayer = showLyricsLayer,
+            showQueueLayer = showQueueLayer,
+            lyricsLayerOnScreen = lyricsLayerOnScreen,
+            queueLayerOnScreen = queueLayerOnScreen
+        )
+    }
+}
+
+@Composable
+private fun ClassicPlayerCompactHeader(
+    track: Track,
+    uiState: PlayerUiState,
+    compactHeaderProgress: State<Float>,
+    compactActionsEnabledState: State<Boolean>,
+    onTabChange: (NowPlayingTab) -> Unit,
+    onToggleFavorite: () -> Unit,
+    onShowTrackOptions: () -> Unit,
+    onArtworkPositioned: (Offset) -> Unit,
+    onMetadataPositioned: (Offset, IntSize) -> Unit,
+    onHeaderHeightMeasured: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val compactActionsEnabled by compactActionsEnabledState
+    val headerInteraction = remember { MutableInteractionSource() }
+    val headerPressed by headerInteraction.collectIsPressedAsState()
+    val coverPressAlpha by animateFloatAsState(if (headerPressed) 0.16f else 0f, tween(140), label = "compactCoverPress")
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .onGloballyPositioned { onHeaderHeightMeasured(it.size.height) }
+            .graphicsLayer { alpha = ClassicPlayerViewportMotion.compactActionsAlpha(compactHeaderProgress.value) }
+            .padding(
+                start = ClassicPlayerViewportMotion.CompactHeaderSideInsetDp.dp,
+                top = 4.dp,
+                end = ClassicPlayerViewportMotion.CompactHeaderSideInsetDp.dp,
+                bottom = 4.dp
+            )
+            .then(
+                if (compactActionsEnabled) {
+                    Modifier
+                        .pointerInput(Unit) {
+                            var dragY = 0f
+                            detectVerticalDragGestures(
+                                onDragStart = { dragY = 0f },
+                                onDragEnd = {
+                                    if (dragY > 24.dp.toPx()) {
+                                        onTabChange(NowPlayingTab.PLAYER)
+                                    }
+                                },
+                                onVerticalDrag = { change, dragAmount ->
+                                    if (dragAmount > 0 || dragY > 0) {
+                                        dragY += dragAmount
+                                        change.consume()
+                                    }
+                                }
+                            )
+                        }
+                        // The whole row returns to the player, but only the cover reacts to the press.
+                        .clickable(interactionSource = headerInteraction, indication = null) {
+                            onTabChange(NowPlayingTab.PLAYER)
+                        }
+                } else {
+                    Modifier
+                }
+            ),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(ClassicPlayerViewportMotion.CompactArtworkSizeDp.dp)
+                .onGloballyPositioned { onArtworkPositioned(it.positionInRoot()) }
+                .drawWithContent {
+                    drawContent()
+                    if (coverPressAlpha > 0f) drawRoundRect(
+                        color = Color.White.copy(alpha = coverPressAlpha),
+                        cornerRadius = CornerRadius(12.dp.toPx())
+                    )
+                }
+        ) {
+            // Geometry-only destination: the expanded artwork remains the single
+            // visible element throughout the transition and at the compact endpoint.
+        }
+        Spacer(Modifier.width(ClassicPlayerViewportMotion.CompactArtworkTextGapDp.dp))
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .onGloballyPositioned {
+                    onMetadataPositioned(it.positionInRoot(), it.size)
+                },
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(
+                Modifier
+                    .weight(1f)
+                    // The visible destination title (the hero title no longer travels here).
+            ) {
+                Text(
+                    track.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    track.artist,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.White.copy(alpha = 0.75f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            IconButton(
+                onClick = onToggleFavorite,
+                enabled = compactActionsEnabled,
+                modifier = Modifier.size(ClassicPlayerViewportMotion.CompactActionSizeDp.dp)
+            ) {
+                Icon(
+                    imageVector = if (uiState.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                    contentDescription = if (uiState.isFavorite) str(R.string.unlike) else str(R.string.like),
+                    tint = if (uiState.isFavorite) Color(0xFFFF4081) else Color.White
+                )
+            }
+            IconButton(
+                onClick = onShowTrackOptions,
+                enabled = compactActionsEnabled,
+                modifier = Modifier.size(ClassicPlayerViewportMotion.CompactActionSizeDp.dp)
+            ) {
+                Icon(Icons.Default.MoreVert, contentDescription = str(R.string.more_options), tint = Color.White)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ClassicPlayerTabOverlay(
+    tab: NowPlayingTab,
+    track: Track,
+    uiState: PlayerUiState,
+    queue: List<Track>,
+    lyricsPositionState: State<Long>,
+    lyricsClockSource: PlaybackClockSource?,
+    onLyricsOffsetChange: (Long) -> Unit,
+    onSearchLyricsManually: () -> Unit,
+    onSeekTo: (Long) -> Unit,
+    onPlayPauseClick: () -> Unit,
+    onPreviousClick: () -> Unit,
+    onNextClick: () -> Unit,
+    onToggleShuffle: () -> Unit,
+    onToggleRepeat: () -> Unit,
+    onSelectQueueTrack: (Int) -> Unit,
+    onReorderQueue: ((Int, Int) -> Unit)?,
+    onRemoveQueueItem: ((Int) -> Unit)? = null,
+    onShowQueueTrackOptions: (Track) -> Unit,
+    actualShowOutputPicker: () -> Unit,
+    onShowSleepDialog: () -> Unit,
+    onTabChange: (NowPlayingTab) -> Unit,
+    seekBarPositionState: State<Long>,
+    totalDurationMs: Long,
+    isScrubbing: Boolean,
+    onScrubbing: (Boolean, Long) -> Unit,
+    sliderStyle: String,
+    standardLyricsBlur: Boolean,
+    controlsAlpha: Float,
+    lyricsListState: androidx.compose.foundation.lazy.LazyListState,
+    queueListState: androidx.compose.foundation.lazy.LazyListState,
+    layerModifier: Modifier,
+    contentLayer: androidx.compose.ui.graphics.GraphicsLayerScope.() -> Unit = {},
+    controlsBottomSpacerDp: androidx.compose.ui.unit.Dp = 0.dp
+) {
+    when (tab) {
+        NowPlayingTab.PLAYER -> Unit
+
+        NowPlayingTab.LYRICS -> {
+            ClassicLyricsContent(
+                track = track,
+                uiState = uiState,
+                lyricsPositionState = lyricsPositionState,
+                lyricsClockSource = lyricsClockSource,
+                onLyricsOffsetChange = onLyricsOffsetChange,
+                onSearchLyricsManually = onSearchLyricsManually,
+                onSeekTo = onSeekTo,
+                onPlayPauseClick = onPlayPauseClick,
+                onPreviousClick = onPreviousClick,
+                onNextClick = onNextClick,
+                onToggleShuffle = onToggleShuffle,
+                onToggleRepeat = onToggleRepeat,
+                seekBarPositionState = seekBarPositionState,
+                totalDurationMs = totalDurationMs,
+                isScrubbing = isScrubbing,
+                onScrubbing = onScrubbing,
+                sliderStyle = sliderStyle,
+                onCloseLyrics = { onTabChange(NowPlayingTab.PLAYER) },
+                onShowOutputPicker = actualShowOutputPicker,
+                onShowSleepDialog = onShowSleepDialog,
+                onToggleQueue = { onTabChange(NowPlayingTab.QUEUE) },
+                controlsAlpha = controlsAlpha,
+                standardLyricsBlur = standardLyricsBlur,
+                showHeader = false,
+                applyStatusBarPadding = false,
+                showBottomBar = false,
+                listState = lyricsListState,
+                modifier = layerModifier,
+                contentLayer = contentLayer,
+                controlsBottomSpacerDp = controlsBottomSpacerDp
+            )
+        }
+
+        NowPlayingTab.QUEUE -> {
+            ClassicQueueContent(
+                track = track,
+                uiState = uiState,
+                queue = queue,
+                // Stay on the queue: the compact header's artwork/title and the
+                // background swap in place. Jumping to the Player tab here ran the full hero
+                // flight and tore down the queue on the same frames the new song was loading.
+                onSelectQueueTrack = onSelectQueueTrack,
+                onReorderQueue = onReorderQueue,
+                onRemoveQueueItem = onRemoveQueueItem,
+                onShowTrackOptions = onShowQueueTrackOptions,
+                onToggleShuffle = onToggleShuffle,
+                onToggleRepeat = onToggleRepeat,
+                onQueueControlsVisibilityChange = {},
+                onCloseQueue = { onTabChange(NowPlayingTab.PLAYER) },
+                onShowOutputPicker = actualShowOutputPicker,
+                onShowSleepDialog = onShowSleepDialog,
+                onToggleLyrics = { onTabChange(NowPlayingTab.LYRICS) },
+                seekBarPositionState = seekBarPositionState,
+                totalDurationMs = totalDurationMs,
+                isScrubbing = isScrubbing,
+                onScrubbing = onScrubbing,
+                onSeekTo = onSeekTo,
+                onPlayPauseClick = onPlayPauseClick,
+                onPreviousClick = onPreviousClick,
+                onNextClick = onNextClick,
+                sliderStyle = sliderStyle,
+                controlsAlpha = controlsAlpha,
+                showHeader = false,
+                applyStatusBarPadding = false,
+                showBottomBar = false,
+                queueListState = queueListState,
+                modifier = layerModifier,
+                contentLayer = contentLayer,
+                controlsBottomSpacerDp = controlsBottomSpacerDp
+            )
+        }
+    }
+}
+
+@Composable
+fun ClassicPlayerContainer(
+    track: Track,
+    uiState: PlayerUiState,
+    currentTab: NowPlayingTab,
+    onTabChange: (NowPlayingTab) -> Unit,
+    pagerState: PagerState,
+    queue: List<Track>,
+    currentTrackIndex: Int,
+    seekBarPositionState: State<Long>,
+    totalDurationMs: Long,
+    isScrubbing: Boolean,
+    onScrubbing: (Boolean, Long) -> Unit,
+    onSeekTo: (Long) -> Unit,
+    onPlayPauseClick: () -> Unit,
+    onNextClick: () -> Unit,
+    onPreviousClick: () -> Unit,
+    onToggleShuffle: () -> Unit = {},
+    onToggleRepeat: () -> Unit = {},
+    onToggleFavorite: () -> Unit,
+    onDismiss: () -> Unit,
+    onSelectQueueTrack: (Int) -> Unit,
+    onReorderQueue: ((Int, Int) -> Unit)? = null,
+    onRemoveQueueItem: ((Int) -> Unit)? = null,
+    onShowTrackOptions: () -> Unit,
+    onShowQueueTrackOptions: (Track) -> Unit = {},
+    onShowSleepDialog: () -> Unit,
+    onShowOutputPicker: (() -> Unit)? = null,
+    lyricsPositionState: State<Long>,
+    lyricsClockSource: PlaybackClockSource?,
+    onLyricsOffsetChange: (Long) -> Unit,
+    onSearchLyricsManually: () -> Unit,
+    controlsAlpha: Float,
+    enableSwipeToChangeSong: Boolean,
+    hidePlayerThumbnail: Boolean,
+    cropAlbumArt: Boolean,
+    sliderStyle: String = com.auralis.music.ui.theme.LocalAppearanceSettings.current.playerSliderStyle,
+    standardLyricsBlur: Boolean = com.auralis.music.ui.theme.LocalAppearanceSettings.current.standardLyricsBlur,
+    modifier: Modifier = Modifier,
+    onArtistClick: ((Artist) -> Unit)? = null
+) {
+    val context = LocalContext.current
+    val actualShowOutputPicker = onShowOutputPicker ?: { openAudioOutputSettings(context) }
+    val reducedMotion = LocalReducedMotion.current
+    val motion = rememberClassicPlayerMotion(currentTab, reducedMotion)
+
+    val saveableStateHolder = rememberSaveableStateHolder()
+    val density = LocalDensity.current
+    var viewportTopInRootPx by remember { mutableIntStateOf(-1) }
+    var viewportHeightPx by remember { mutableIntStateOf(0) }
+    var handleBottomInRootPx by remember { mutableIntStateOf(-1) }
+    var timelineTopInRootPx by remember { mutableIntStateOf(-1) }
+    var compactArtworkTargetInRoot by remember { mutableStateOf(Offset.Zero) }
+    var compactMetadataTargetInRoot by remember { mutableStateOf(Offset.Zero) }
+    var compactMetadataTargetSize by remember { mutableStateOf(IntSize.Zero) }
+    var compactHeaderHeightPx by remember { mutableIntStateOf(0) }
+    var controlsBottomSpacerHeightPx by remember { mutableIntStateOf(0) }
+    val controlsBottomSpacerDp = with(density) {
+        if (controlsBottomSpacerHeightPx > 0) controlsBottomSpacerHeightPx.toDp() else 52.dp
+    }
+
+    val initialQueueScrollIndex = remember {
+        val activeIdx = QueueOperations.findActiveTrackIndex(
+            queue = queue,
+            currentTrack = track,
+            currentIndex = currentTrackIndex
+        )
+        if (activeIdx >= 0) {
+            QueueOperations.calculateScrollIndex(
+                targetIndex = activeIdx,
+                visibleItemCount = 6,
+                queueSize = queue.size
+            )
+        } else {
+            0
+        }
+    }
+    val lyricsListState = rememberLazyListState()
+    val queueListState = rememberLazyListState(initialFirstVisibleItemIndex = initialQueueScrollIndex)
+    // Both flip while the cover is moving, so they are read at placement and in the header only.
+    // Reading them here recomposed the whole player halfway through the flight, at peak speed.
+    val compactActionsEnabledState = remember(motion.compactHeaderProgress) {
+        derivedStateOf { motion.compactHeaderProgress.value > 0.5f }
+    }
+    // The blur is the heaviest thing on screen. Lyrics are invisible for most of the flight, so
+    // it only has to stay off until they start to show, which also keeps them from sharpening.
+    val lyricsBlurSuspended = remember(motion.compactHeaderProgress) {
+        derivedStateOf {
+            motion.compactHeaderProgress.value in 0.001f..ClassicPlayerViewportMotion.LyricsRevealStart
+        }
+    }
+    val heroIsInFlight by remember(motion.compactHeaderProgress, currentTab) {
+        derivedStateOf {
+            val progress = motion.compactHeaderProgress.value
+            if (currentTab == NowPlayingTab.PLAYER) progress > 0.001f else progress < 0.999f
+        }
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .navigationBarsPadding(),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .clipToBounds()
+                .onGloballyPositioned { coordinates ->
+                    viewportTopInRootPx = coordinates.positionInRoot().y.roundToInt()
+                    viewportHeightPx = coordinates.size.height
+                }
+        ) {
+            val renderedContentTabs = buildList {
+                if (motion.showLyricsLayer.value) add(NowPlayingTab.LYRICS)
+                if (motion.showQueueLayer.value) add(NowPlayingTab.QUEUE)
+            }
+
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .placementZIndex { if (currentTab != NowPlayingTab.PLAYER || compactActionsEnabledState.value) 3f else 1f }
+            ) {
+                val chromeTopOffset = if (handleBottomInRootPx > viewportTopInRootPx) {
+                    with(density) { (handleBottomInRootPx - viewportTopInRootPx).toDp() }
+                } else {
+                    12.dp
+                }
+                Spacer(Modifier.height(chromeTopOffset))
+
+                ClassicPlayerCompactHeader(
+                    track = track,
+                    uiState = uiState,
+                    compactHeaderProgress = motion.compactHeaderProgress,
+                    compactActionsEnabledState = compactActionsEnabledState,
+                    onTabChange = onTabChange,
+                    onToggleFavorite = onToggleFavorite,
+                    onShowTrackOptions = onShowTrackOptions,
+                    onArtworkPositioned = { compactArtworkTargetInRoot = it },
+                    onMetadataPositioned = { pos, size ->
+                        compactMetadataTargetInRoot = pos
+                        compactMetadataTargetSize = size
+                    },
+                    onHeaderHeightMeasured = { compactHeaderHeightPx = it }
+                )
+
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .clipToBounds()
+                ) {
+                    renderedContentTabs.forEach { tab ->
+                        val isLyrics = tab == NowPlayingTab.LYRICS
+                        // Only the tab's content fades/glides; its playback controls stay opaque and
+                        // still so they read as one fixed set across Player/Lyrics/Queue.
+                        val layerContent: androidx.compose.ui.graphics.GraphicsLayerScope.() -> Unit = {
+                            alpha = if (isLyrics) {
+                                motion.lyricsAlpha.value * ClassicPlayerViewportMotion.lyricsRevealAlpha(motion.compactHeaderProgress.value)
+                            } else {
+                                motion.queueAlpha.value
+                            }
+                            // An offscreen buffer per frame for a full-height list was the cost of this fade.
+                            compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.ModulateAlpha
+                            translationY = (if (isLyrics) motion.lyricsTranslationYDp.value else motion.queueTranslationYDp.value).dp.toPx()
+                        }
+                        val onScreen = if (isLyrics) motion.lyricsLayerOnScreen else motion.queueLayerOnScreen
+                        val layerModifier = Modifier
+                            .fillMaxSize()
+                            .zIndex(if (tab == currentTab) 1f else 0f)
+                            // Parked below the viewport while hidden: it can't take touches or draw,
+                            // and moving it needs no new layout when it comes back.
+                            .offset { IntOffset(0, if (onScreen.value) 0 else HiddenLayerOffsetPx) }
+                            // Off-screen still redraws (a lyric blur at 53ms a frame) unless skipped.
+                            .drawWithContent { if (onScreen.value) drawContent() }
+
+                        androidx.compose.runtime.key(tab) {
+                            saveableStateHolder.SaveableStateProvider(tab.name) {
+                                HiddenLayerMotion(onScreen, lyricsBlurSuspended) {
+                                ClassicPlayerTabOverlay(
+                                    tab = tab,
+                                    track = track,
+                                    uiState = uiState,
+                                    queue = queue,
+                                    lyricsPositionState = lyricsPositionState,
+                                    lyricsClockSource = lyricsClockSource,
+                                    onLyricsOffsetChange = onLyricsOffsetChange,
+                                    onSearchLyricsManually = onSearchLyricsManually,
+                                    onSeekTo = onSeekTo,
+                                    onPlayPauseClick = onPlayPauseClick,
+                                    onPreviousClick = onPreviousClick,
+                                    onNextClick = onNextClick,
+                                    onToggleShuffle = onToggleShuffle,
+                                    onToggleRepeat = onToggleRepeat,
+                                    onSelectQueueTrack = onSelectQueueTrack,
+                                    onReorderQueue = onReorderQueue,
+                                    onRemoveQueueItem = onRemoveQueueItem,
+                                    onShowQueueTrackOptions = onShowQueueTrackOptions,
+                                    actualShowOutputPicker = actualShowOutputPicker,
+                                    onShowSleepDialog = onShowSleepDialog,
+                                    onTabChange = onTabChange,
+                                    seekBarPositionState = seekBarPositionState,
+                                    totalDurationMs = totalDurationMs,
+                                    isScrubbing = isScrubbing,
+                                    onScrubbing = onScrubbing,
+                                    sliderStyle = sliderStyle,
+                                    standardLyricsBlur = standardLyricsBlur,
+                                    controlsAlpha = controlsAlpha,
+                                    lyricsListState = lyricsListState,
+                                    queueListState = queueListState,
+                                    layerModifier = layerModifier,
+                                    contentLayer = layerContent,
+                                    controlsBottomSpacerDp = controlsBottomSpacerDp
+                                )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            ClassicPlayerView(
+                inlineLyricsPositionState = lyricsPositionState,
+                track = track,
+                uiState = uiState,
+                pagerState = pagerState,
+                queue = queue,
+                currentTrackIndex = currentTrackIndex,
+                seekBarPositionState = seekBarPositionState,
+                totalDurationMs = totalDurationMs,
+                isScrubbing = isScrubbing,
+                onScrubbing = onScrubbing,
+                onSeekTo = onSeekTo,
+                onPlayPauseClick = onPlayPauseClick,
+                onNextClick = onNextClick,
+                onPreviousClick = onPreviousClick,
+                onToggleShuffle = onToggleShuffle,
+                onToggleRepeat = onToggleRepeat,
+                onToggleFavorite = onToggleFavorite,
+                onDismiss = onDismiss,
+                onShowMoreOptions = onShowTrackOptions,
+                onShowSleepDialog = onShowSleepDialog,
+                onShowOutputPicker = actualShowOutputPicker,
+                onToggleQueue = { onTabChange(NowPlayingTab.QUEUE) },
+                onToggleLyrics = { onTabChange(NowPlayingTab.LYRICS) },
+                controlsAlpha = controlsAlpha,
+                enableSwipeToChangeSong = enableSwipeToChangeSong && currentTab == NowPlayingTab.PLAYER,
+                hidePlayerThumbnail = hidePlayerThumbnail,
+                cropAlbumArt = cropAlbumArt,
+                sliderStyle = sliderStyle,
+                compactHeaderProgress = motion.compactHeaderProgress,
+                queueTransportProgress = motion.queueTransportProgress,
+                compactArtworkTargetInRoot = compactArtworkTargetInRoot,
+                compactMetadataTargetInRoot = compactMetadataTargetInRoot,
+                compactMetadataTargetSize = compactMetadataTargetSize,
+                onHandleBottomMeasured = { handleBottomInRootPx = it },
+                onTimelineTopMeasured = { timelineTopInRootPx = it },
+                onControlsBottomSpacerMeasured = { controlsBottomSpacerHeightPx = it },
+                headerMotionModifier = Modifier.graphicsLayer {
+                    alpha = (motion.topBarAlpha.value * 4f - 3f).coerceIn(0f, 1f)
+                    translationY = motion.topBarTranslationYDp.value.dp.toPx()
+                },
+                controlsMotionModifier = Modifier.graphicsLayer {
+                    alpha = ClassicPlayerViewportMotion.playerControlsAlpha(motion.compactHeaderProgress.value)
+                },
+                onPlaybackControlsInteraction = {},
+                showBottomBar = false,
+                modifier = Modifier
+                    .fillMaxSize()
+                    // Keep the transformed hero alive at the compact endpoint. The old
+                    // full-layer fade forced a late artwork/title handoff and visible pop.
+                    // While moving, lift it above both destination screens just like
+                    // a shared-element overlay (zIndexInOverlay = 1f).
+                    .placementZIndex {
+                        when {
+                            heroIsInFlight -> 4f
+                            currentTab == NowPlayingTab.PLAYER -> 2f
+                            else -> 0f
+                        }
+                    },
+                onArtistClick = onArtistClick
+            )
+        }
+
+        ClassicBottomBar(
+            isQueueActive = currentTab == NowPlayingTab.QUEUE,
+            isLyricsActive = currentTab == NowPlayingTab.LYRICS,
+            isTimerActive = uiState.sleepTimerSeconds > 0 || uiState.isSleepTimerEndOfSong,
+            isShuffled = uiState.isShuffled,
+            repeatMode = uiState.repeatMode,
+            onToggleQueue = {
+                onTabChange(if (currentTab == NowPlayingTab.QUEUE) NowPlayingTab.PLAYER else NowPlayingTab.QUEUE)
+            },
+            onToggleShuffle = onToggleShuffle,
+            onToggleRepeat = onToggleRepeat,
+            onShowOutputPicker = actualShowOutputPicker,
+            onShowSleepDialog = onShowSleepDialog,
+            onToggleLyrics = {
+                onTabChange(if (currentTab == NowPlayingTab.LYRICS) NowPlayingTab.PLAYER else NowPlayingTab.LYRICS)
+            },
+            controlsAlpha = controlsAlpha,
+            showUtilityActions = ClassicPlayerViewportMotion.showBottomUtilityActions(currentTab),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 6.dp)
+        )
+
+        Spacer(modifier = Modifier.height(6.dp))
+    }
+}
+
+@Composable
+private fun ClassicLyricsContent(
+    track: Track,
+    uiState: PlayerUiState,
+    lyricsPositionState: State<Long>,
+    lyricsClockSource: PlaybackClockSource?,
+    onLyricsOffsetChange: (Long) -> Unit,
+    onSearchLyricsManually: () -> Unit,
+    onSeekTo: (Long) -> Unit,
+    onPlayPauseClick: () -> Unit = {},
+    onPreviousClick: () -> Unit = {},
+    onNextClick: () -> Unit = {},
+    onToggleShuffle: () -> Unit = {},
+    onToggleRepeat: () -> Unit = {},
+    seekBarPositionState: State<Long>,
+    totalDurationMs: Long,
+    isScrubbing: Boolean,
+    onScrubbing: (Boolean, Long) -> Unit,
+    onCloseLyrics: () -> Unit,
+    onShowOutputPicker: () -> Unit,
+    onShowSleepDialog: () -> Unit,
+    onToggleQueue: () -> Unit,
+    controlsAlpha: Float,
+    standardLyricsBlur: Boolean = com.auralis.music.ui.theme.LocalAppearanceSettings.current.standardLyricsBlur,
+    sliderStyle: String = com.auralis.music.ui.theme.LocalAppearanceSettings.current.playerSliderStyle,
+    showHeader: Boolean = true,
+    applyStatusBarPadding: Boolean = true,
+    showBottomBar: Boolean = true,
+    modifier: Modifier = Modifier,
+    listState: androidx.compose.foundation.lazy.LazyListState = rememberLazyListState(),
+    contentLayer: androidx.compose.ui.graphics.GraphicsLayerScope.() -> Unit = {},
+    controlsBottomSpacerDp: androidx.compose.ui.unit.Dp = 0.dp
+) {
+    // Plain remember: re-entering Lyrics must start with the controls already in place,
+    // not restore a stale "hidden" state and slide them in over the Player's copy.
+    var lyricsControlsVisible by remember { mutableStateOf(true) }
+    var lyricsInteractionTick by remember { mutableIntStateOf(0) }
+    var isUserScrollingLyrics by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        lyricsControlsVisible = true
+        lyricsInteractionTick++
+    }
+
+    LaunchedEffect(lyricsInteractionTick, isScrubbing, isUserScrollingLyrics, listState.isScrollInProgress) {
+        if (!lyricsControlsVisible) return@LaunchedEffect
+        if (isScrubbing || isUserScrollingLyrics || (listState.isScrollInProgress && isUserScrollingLyrics)) {
+            return@LaunchedEffect
+        }
+        delay(ClassicPlayerViewportMotion.LyricsControlsTimeoutMillis)
+        lyricsControlsVisible = false
+    }
+
+    LaunchedEffect(listState.isScrollInProgress) {
+        if (!listState.isScrollInProgress && isUserScrollingLyrics) {
+            isUserScrollingLyrics = false
+            lyricsInteractionTick++
+        }
+    }
+
+    val lyricsNestedScrollConnection = remember {
+        object : NestedScrollConnection {
+            // Direction-driven like the queue tab: scrolling down through the lyrics hides the
+            // controls panel, scrolling back up reveals it. Tap-toggle and auto-hide still apply.
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (source == NestedScrollSource.UserInput) {
+                    if (available.y < -2f) {
+                        lyricsControlsVisible = false
+                        isUserScrollingLyrics = true
+                    } else if (available.y > 2f) {
+                        lyricsControlsVisible = true
+                        isUserScrollingLyrics = true
+                        lyricsInteractionTick++
+                    }
+                }
+                return Offset.Zero
+            }
+
+            override suspend fun onPostFling(
+                consumed: Velocity,
+                available: Velocity
+            ): Velocity {
+                isUserScrollingLyrics = false
+                lyricsInteractionTick++
+                return super.onPostFling(consumed, available)
+            }
+        }
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .then(if (applyStatusBarPadding) Modifier.statusBarsPadding() else Modifier)
+    ) {
+        if (showHeader) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(
+                    onClick = onCloseLyrics,
+                    modifier = Modifier.size(40.dp).tactileBounce(scaleDown = 0.88f)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowDown,
+                        contentDescription = str(R.string.back_to_player),
+                        tint = Color.White.copy(alpha = 0.85f),
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.weight(1f).padding(horizontal = 8.dp)
+                ) {
+                    Text(
+                        text = "LYRICS",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White.copy(alpha = 0.55f),
+                        letterSpacing = 2.0.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 10.sp
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = track.title,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Spacer(modifier = Modifier.size(40.dp))
+            }
+        }
+
+        val inheritedHazeState = LocalClassicLyricsHazeState.current
+        val lyricsHazeState = inheritedHazeState ?: remember { HazeState() }
+
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .hazeSource(state = lyricsHazeState, zIndex = 1f)
+                    .padding(horizontal = 16.dp)
+                    .nestedScroll(lyricsNestedScrollConnection)
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onTap = {
+                                lyricsControlsVisible = !lyricsControlsVisible
+                                if (lyricsControlsVisible) {
+                                    lyricsInteractionTick++
+                                }
+                            }
+                        )
+                    }
+                    .graphicsLayer {
+                        contentLayer()
+                        alpha *= controlsAlpha
+                    }
+            ) {
+                SyncedLyricsView(
+                    lyrics = uiState.lyrics,
+                    positionState = lyricsPositionState,
+                    onSeekTo = { posMs ->
+                        lyricsControlsVisible = true
+                        lyricsInteractionTick++
+                        onSeekTo(posMs)
+                        if (!uiState.isPlaying) {
+                            onPlayPauseClick()
+                        }
+                    },
+                    isLoading = uiState.isLoadingLyrics,
+                    lyricsMode = LyricsMode.CINEMA,
+                    offsetMs = uiState.lyricsOffsetMs,
+                    onOffsetChange = {
+                        lyricsControlsVisible = true
+                        lyricsInteractionTick++
+                        onLyricsOffsetChange(it)
+                    },
+                    onSearchManually = onSearchLyricsManually,
+                    track = uiState.currentTrack,
+                    lyricsClockSource = lyricsClockSource,
+                    isPlaying = uiState.isPlaying,
+                    isBuffering = uiState.isBuffering,
+                    audioLeadingSilenceMs = uiState.audioLeadingSilenceMs,
+                    listState = listState,
+                    standardLyricsBlur = standardLyricsBlur,
+                    loadingAlignment = androidx.compose.ui.BiasAlignment(0f, -0.28f)
+                )
+            }
+
+            androidx.compose.animation.AnimatedVisibility(
+                visible = lyricsControlsVisible,
+                enter = fadeIn(tween(ClassicPlayerViewportMotion.ControlsEnterDurationMillis, easing = FastOutSlowInEasing)) +
+                    slideInVertically(tween(ClassicPlayerViewportMotion.ControlsEnterDurationMillis, easing = FastOutSlowInEasing)) {
+                        it / ClassicPlayerViewportMotion.ControlsSlideFraction
+                    },
+                exit = fadeOut(tween(ClassicPlayerViewportMotion.ControlsExitDurationMillis, easing = FastOutSlowInEasing)) +
+                    slideOutVertically(tween(ClassicPlayerViewportMotion.ControlsExitDurationMillis, easing = FastOutSlowInEasing)) {
+                        it / ClassicPlayerViewportMotion.ControlsSlideFraction
+                    },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .hazeEffect(
+                            state = lyricsHazeState,
+                            style = HazeStyle(
+                                backgroundColor = Color.Black,
+                                // No tint: any darkening shows as a seam against the unblurred
+                                // backdrop behind the bottom utility bar.
+                                tint = HazeTint(Color.Transparent),
+                                blurRadius = 28.dp,
+                                noiseFactor = 0f
+                            )
+                        ) {
+                            // Haze defaults blur off below API 32 and silently falls back to a
+                            // flat tint scrim, which is the "black-tinted glass" look. Force the
+                            // real RenderEffect blur (API 31+) and always composite both the
+                            // ambient background (z0) and the lyrics (z1) sources.
+                            blurEnabled = true
+                            canDrawArea = { true }
+                            // Blur a downscaled copy: far cheaper per frame, visually identical
+                            // at this radius. Full-res blur was costing frames during tab switches.
+                            inputScale = dev.chrisbanes.haze.HazeInputScale.Auto
+                            // Feather both edges so the glass blends into the lyrics above and
+                            // the bottom utility bar below instead of ending in a hard line.
+                            mask = Brush.verticalGradient(
+                                0.00f to Color.Transparent,
+                                0.22f to Color.Black,
+                                0.88f to Color.Black,
+                                1.00f to Color.Transparent
+                            )
+                        }
+                        .padding(top = 16.dp)
+                ) {
+                    ClassicCompactPlaybackControls(
+                        caption = LocalLyricsSourcePicker.current?.let { change ->
+                            { LyricsSourceCaption(lyrics = uiState.lyrics, onChange = change) }
+                        },
+                        track = track,
+                        uiState = uiState,
+                        seekBarPositionState = seekBarPositionState,
+                        totalDurationMs = totalDurationMs,
+                        isScrubbing = isScrubbing,
+                        onScrubbing = { scrubbing, posMs ->
+                            lyricsControlsVisible = true
+                            lyricsInteractionTick++
+                            onScrubbing(scrubbing, posMs)
+                        },
+                        onSeekTo = { posMs ->
+                            lyricsControlsVisible = true
+                            lyricsInteractionTick++
+                            onSeekTo(posMs)
+                        },
+                        onPlayPauseClick = {
+                            lyricsControlsVisible = true
+                            lyricsInteractionTick++
+                            onPlayPauseClick()
+                        },
+                        onPreviousClick = {
+                            lyricsControlsVisible = true
+                            lyricsInteractionTick++
+                            onPreviousClick()
+                        },
+                        onNextClick = {
+                            lyricsControlsVisible = true
+                            lyricsInteractionTick++
+                            onNextClick()
+                        },
+                        onToggleShuffle = {
+                            lyricsControlsVisible = true
+                            lyricsInteractionTick++
+                            onToggleShuffle()
+                        },
+                        onToggleRepeat = {
+                            lyricsControlsVisible = true
+                            lyricsInteractionTick++
+                            onToggleRepeat()
+                        },
+                        sliderStyle = sliderStyle,
+                        controlsAlpha = controlsAlpha,
+                        // Shuffle and Repeat belong to the bottom utility squircle.
+                        showTransportPills = false,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 6.dp)
+                            .pointerInput(Unit) {
+                                awaitEachGesture {
+                                    awaitFirstDown(requireUnconsumed = false)
+                                    lyricsControlsVisible = true
+                                    lyricsInteractionTick++
+                                }
+                            }
+                    )
+                    if (controlsBottomSpacerDp > 0.dp) {
+                        Spacer(modifier = Modifier.height(controlsBottomSpacerDp))
+                    }
+                }
+            }
+        }
+
+        if (showBottomBar) {
+            ClassicBottomBar(
+                isQueueActive = false,
+                isLyricsActive = true,
+                isTimerActive = uiState.sleepTimerSeconds > 0 || uiState.isSleepTimerEndOfSong,
+                isShuffled = uiState.isShuffled,
+                repeatMode = uiState.repeatMode,
+                onToggleQueue = onToggleQueue,
+                onToggleShuffle = onToggleShuffle,
+                onToggleRepeat = onToggleRepeat,
+                onShowOutputPicker = onShowOutputPicker,
+                onShowSleepDialog = onShowSleepDialog,
+                onToggleLyrics = onCloseLyrics,
+                controlsAlpha = controlsAlpha,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 6.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun ClassicQueueActionTile(
+    icon: ImageVector,
+    description: String,
+    active: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .height(48.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color.White.copy(alpha = if (active) 0.22f else 0.12f))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = description,
+            tint = if (active) MaterialTheme.colorScheme.primary else Color.White,
+            modifier = Modifier.size(24.dp)
+        )
+    }
+}
+
+@Composable
+private fun ClassicQueueOutputActionTile(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .height(46.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(Color.White.copy(alpha = 0.11f))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = AudioOutputIcon,
+            contentDescription = str(R.string.audio_output),
+            tint = Color.White,
+            modifier = Modifier.size(24.dp)
+        )
+    }
+}
+
+@Composable
+internal fun ClassicQueueContent(
+    track: Track,
+    uiState: PlayerUiState,
+    queue: List<Track>,
+    onSelectQueueTrack: (Int) -> Unit,
+    onReorderQueue: ((Int, Int) -> Unit)? = null,
+    onRemoveQueueItem: ((Int) -> Unit)? = null,
+    onShowTrackOptions: (Track) -> Unit,
+    onToggleShuffle: () -> Unit,
+    onToggleRepeat: () -> Unit,
+    onQueueControlsVisibilityChange: (Boolean) -> Unit,
+    onCloseQueue: () -> Unit,
+    onShowOutputPicker: () -> Unit,
+    onShowSleepDialog: () -> Unit,
+    onToggleLyrics: () -> Unit,
+    seekBarPositionState: State<Long>,
+    totalDurationMs: Long,
+    isScrubbing: Boolean,
+    onScrubbing: (Boolean, Long) -> Unit,
+    onSeekTo: (Long) -> Unit,
+    onPlayPauseClick: () -> Unit,
+    onPreviousClick: () -> Unit,
+    onNextClick: () -> Unit,
+    controlsAlpha: Float,
+    sliderStyle: String = com.auralis.music.ui.theme.LocalAppearanceSettings.current.playerSliderStyle,
+    showHeader: Boolean = true,
+    applyStatusBarPadding: Boolean = true,
+    showBottomBar: Boolean = true,
+    /** False when the host player keeps its own transport under the queue (Immersive). */
+    showPlaybackControls: Boolean = true,
+    /** Extra room under the last row, for a host whose own controls overlay the list. */
+    listBottomPadding: androidx.compose.ui.unit.Dp = 0.dp,
+    modifier: Modifier = Modifier,
+    queueListState: androidx.compose.foundation.lazy.LazyListState = rememberLazyListState(),
+    contentLayer: androidx.compose.ui.graphics.GraphicsLayerScope.() -> Unit = {},
+    controlsBottomSpacerDp: androidx.compose.ui.unit.Dp = 0.dp
+) {
+    var queueLocked by rememberSaveable { mutableStateOf(true) }
+    var queueControlsVisible by remember { mutableStateOf(true) }
+    val queueContext = LocalContext.current
+
+    // Tapping a song re-shows the controls, but not on the tap frame: that frame and the next few
+    // carry the whole song change (palette, pager, queue sync, lyrics), so a reveal started there
+    // dropped its first frames and rose in a stutter. Wait until the new track has actually taken
+    // over, give it a few quiet frames, then rise (or after 1s if the change is slow).
+    var pendingRevealTrackId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(uiState.currentTrack?.id, pendingRevealTrackId) {
+        val pending = pendingRevealTrackId ?: return@LaunchedEffect
+        if (uiState.currentTrack?.id != pending) delay(1_000L)
+        repeat(3) { withFrameNanos { } }
+        pendingRevealTrackId = null
+        if (!queueControlsVisible) {
+            queueControlsVisible = true
+            onQueueControlsVisibilityChange(true)
+        }
+    }
+
+    LaunchedEffect(queueListState) {
+        snapshotFlow { queueListState.firstVisibleItemIndex to queueListState.firstVisibleItemScrollOffset }
+            .collect { (index, offset) ->
+                if (index == 0 && offset == 0 && !queueControlsVisible) {
+                    queueControlsVisible = true
+                    onQueueControlsVisibilityChange(true)
+                }
+            }
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .then(if (applyStatusBarPadding) Modifier.statusBarsPadding() else Modifier)
+    ) {
+        if (showHeader) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(
+                    onClick = onCloseQueue,
+                    modifier = Modifier.size(40.dp).tactileBounce(scaleDown = 0.88f)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowDown,
+                        contentDescription = str(R.string.back_to_player),
+                        tint = Color.White.copy(alpha = 0.85f),
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.weight(1f).padding(horizontal = 8.dp)
+                ) {
+                    Text(
+                        text = "QUEUE",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White.copy(alpha = 0.55f),
+                        letterSpacing = 2.0.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 10.sp
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = str(R.string.x_songs, queue.size),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Spacer(modifier = Modifier.size(40.dp))
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(top = 10.dp)
+                .graphicsLayer { contentLayer() },
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            ClassicQueueActionTile(
+                icon = Icons.Default.Shuffle,
+                description = str(R.string.shuffle),
+                active = uiState.isShuffled,
+                onClick = onToggleShuffle,
+                modifier = Modifier.weight(1f)
+            )
+            ClassicQueueActionTile(
+                icon = if (uiState.repeatMode == RepeatMode.ONE) Icons.Default.RepeatOne else Icons.Default.Repeat,
+                description = str(R.string.repeat),
+                active = uiState.repeatMode != RepeatMode.OFF,
+                onClick = onToggleRepeat,
+                modifier = Modifier.weight(1f)
+            )
+            ClassicQueueActionTile(
+                icon = AudioOutputIcon,
+                description = str(R.string.audio_output),
+                active = false,
+                onClick = onShowOutputPicker,
+                modifier = Modifier.weight(1f)
+            )
+            ClassicQueueActionTile(
+                icon = Icons.Default.Bedtime,
+                description = str(R.string.sleep_timer_2),
+                active = uiState.sleepTimerSeconds > 0 || uiState.isSleepTimerEndOfSong,
+                onClick = onShowSleepDialog,
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        // Controls overlay the list (like the lyrics tab) instead of sitting below it.
+        // Resizing the list on every frame of the show/hide animation re-laid out its rows and
+        // triggered their placement animations, briefly stacking rows on top of each other.
+        val queueHazeState = LocalClassicLyricsHazeState.current
+        var queueControlsHeightPx by remember { mutableIntStateOf(0) }
+        val queueControlsReveal by animateFloatAsState(
+            targetValue = if (queueControlsVisible) 1f else 0f,
+            animationSpec = tween(
+                if (queueControlsVisible) ClassicPlayerViewportMotion.ControlsEnterDurationMillis
+                else ClassicPlayerViewportMotion.ControlsExitDurationMillis,
+                easing = FastOutSlowInEasing
+            ),
+            label = "queueControlsReveal"
+        )
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    // Sharp rows fade out exactly where the frosted panel's blur fades in (its
+                    // top 22%), and stay hidden beneath it. Without this the panel's feathered
+                    // edges showed crisp rows over the seek bar and under the volume slider.
+                    // Placed before hazeSource so the panel still blurs the unmasked rows.
+                    .graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
+                    .drawWithContent {
+                        drawContent()
+                        val panelHeight = queueControlsHeightPx.toFloat()
+                        if (queueControlsReveal > 0.001f && panelHeight > 0f) {
+                            val panelTop = size.height - panelHeight
+                            drawRect(
+                                brush = Brush.verticalGradient(
+                                    colors = listOf(Color.Black, Color.Black.copy(alpha = 1f - queueControlsReveal)),
+                                    startY = panelTop,
+                                    endY = panelTop + panelHeight * 0.22f
+                                ),
+                                blendMode = androidx.compose.ui.graphics.BlendMode.DstIn
+                            )
+                        }
+                    }
+                    // Blur source so the frosted controls can blur the rows scrolling beneath them.
+                    .then(if (queueHazeState != null) Modifier.hazeSource(state = queueHazeState, zIndex = 1f) else Modifier)
+                    .padding(horizontal = 16.dp)
+                    .graphicsLayer {
+                        contentLayer()
+                        alpha *= controlsAlpha
+                    }
+            ) {
+                val queueSnapshot = uiState.queue
+                val queueCurrentIndex = uiState.currentIndex
+                val queueItemShape = remember { RoundedCornerShape(14.dp) }
+                val queueArtworkCorner = remember { 8.dp }
+                val subtitleColor = remember { Color.White.copy(alpha = 0.6f) }
+                val context = androidx.compose.ui.platform.LocalContext.current
+                val density = LocalDensity.current
+                val haptic = LocalHapticFeedback.current
+                val localQueue = remember {
+                    queueSnapshot.map { track ->
+                        createQueueTrackItem(track)
+                    }.toMutableStateList()
+                }
+
+                // Existing queueListState passed in from caller preserves scroll position across tab switches
+
+                var startDragIndex by remember { mutableIntStateOf(-1) }
+                var lastDragEndTime by remember { mutableLongStateOf(0L) }
+
+                val edgeScrollSpeed = with(density) { 45.dp.toPx() }
+                val scroller = rememberScroller(
+                    scrollableState = queueListState,
+                    pixelPerSecond = edgeScrollSpeed
+                )
+                val reorderableLazyListState = rememberReorderableLazyListState(
+                    lazyListState = queueListState,
+                    scroller = scroller
+                ) { from, to ->
+                    // Keys, not list positions: the section headers sit between the songs.
+                    val fromIndex = localQueue.indexOfFirst { it.instanceId == from.key }
+                    val toIndex = localQueue.indexOfFirst { it.instanceId == to.key }
+                    if (!queueLocked && fromIndex in localQueue.indices && toIndex in localQueue.indices) {
+                        localQueue.add(toIndex, localQueue.removeAt(fromIndex))
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    }
+                }
+
+                LaunchedEffect(queueSnapshot) {
+                    syncLocalQueueWithSnapshot(localQueue, queueSnapshot, reorderableLazyListState.isAnyItemDragging)
+                }
+
+                // History contains only queue occurrences that actually played, as on desktop.
+                val playingTrack = uiState.currentTrack
+                val activeQueueIndex by remember(localQueue, playingTrack, queueCurrentIndex) {
+                    derivedStateOf {
+                        if (playingTrack == null) 0
+                        else QueueOperations.findActiveTrackIndex(
+                            queue = localQueue.map { it.track },
+                            currentTrack = playingTrack,
+                            currentIndex = queueCurrentIndex
+                        ).coerceAtLeast(0)
+                    }
+                }
+                val historyIndices = (0 until activeQueueIndex).filter { it in uiState.listenedQueueIndices }
+                val historyItems = historyIndices.mapNotNull { localQueue.getOrNull(it) }
+                val historyCount = historyItems.size
+                val continueHeaderIndex = if (historyCount > 0) historyCount + 1 else 0
+                val baseBottomPadding = with(density) { queueControlsHeightPx.toDp() } + listBottomPadding
+                var viewportHeightPx by remember(queueListState) { mutableIntStateOf(0) }
+                var continueSectionHeightPx by remember(queueListState, historyCount, localQueue.size) {
+                    mutableIntStateOf(0)
+                }
+                // When the remaining queue is shorter than the viewport, LazyColumn clamps its
+                // maximum scroll before Continue Playing can reach the top. Measure that section
+                // in the same list and give its end only the space needed to reach the normal
+                // queue position. History stays before it and is revealed only by scrolling up.
+                LaunchedEffect(queueListState, historyCount, localQueue.size) {
+                    snapshotFlow { queueListState.layoutInfo }.collect { info ->
+                        if (info.totalItemsCount == 0) return@collect
+                        viewportHeightPx = info.viewportSize.height
+                        val header = info.visibleItemsInfo.firstOrNull { it.index == continueHeaderIndex }
+                        val last = info.visibleItemsInfo.firstOrNull { it.index == info.totalItemsCount - 1 }
+                        if (header != null && last != null) {
+                            continueSectionHeightPx = last.offset + last.size - header.offset
+                        }
+                    }
+                }
+                val baseBottomPaddingPx = with(density) { baseBottomPadding.roundToPx() }
+                val extraBottomPaddingPx = if (continueSectionHeightPx > 0) {
+                    (viewportHeightPx - continueSectionHeightPx - baseBottomPaddingPx).coerceAtLeast(0)
+                } else 0
+                var userScrolledQueue by remember(queueListState) { mutableStateOf(false) }
+
+                // Opening the Queue tab lands on Continue Playing with History hidden above.
+                LaunchedEffect(Unit) {
+                    queueListState.scrollToItem(continueHeaderIndex)
+                }
+                LaunchedEffect(extraBottomPaddingPx) {
+                    if (extraBottomPaddingPx > 0 && !userScrolledQueue) {
+                        queueListState.scrollToItem(continueHeaderIndex)
+                    }
+                }
+                // When the song changes, played songs move up into History. The list keeps its first
+                // visible item (normally the Continue Playing header) in place by key, so the
+                // remaining rows simply slide up. Only if something else was at the top is it set
+                // back, in the same layout pass: an animated scroll here ran against the rows' own
+                // placement animation and made them overlap.
+                var lastPlayingQueuePosition by remember { mutableStateOf(playingTrack?.id to queueCurrentIndex) }
+                // Read fresh after the wait: the split moves a few frames after the song changes,
+                // and keying the effect on the index restarted it then, which bailed out as "same
+                // song" and the header never glided up.
+                val latestContinueHeaderIndex by rememberUpdatedState(continueHeaderIndex)
+                LaunchedEffect(playingTrack?.id, queueCurrentIndex) {
+                    val id = playingTrack?.id ?: return@LaunchedEffect
+                    val position = id to queueCurrentIndex
+                    if (position == lastPlayingQueuePosition) return@LaunchedEffect
+                    lastPlayingQueuePosition = position
+                    if (reorderableLazyListState.isAnyItemDragging) return@LaunchedEffect
+                    // Let the rows finish sliding first; a jump now would cancel their animation
+                    // (this check used to run before the list had re-laid out, so it nearly always
+                    // jumped). Only if the header has really left the screen, e.g. History was
+                    // scrolled into view, glide back to it.
+                    kotlinx.coroutines.delay(PlayerTransitionMotion.QueuePlacementMillis.toLong() + 40L)
+                    // Continue Playing belongs at the top once the song has changed; glide it there
+                    // if History is showing above it (or it has left the screen).
+                    val target = latestContinueHeaderIndex
+                    val headerAtTop = queueListState.firstVisibleItemIndex == target &&
+                        queueListState.firstVisibleItemScrollOffset == 0
+                    if (!headerAtTop) {
+                        queueListState.animateScrollToItem(target)
+                    }
+                }
+
+                // Pre-cache palettes for visible tracks in the Queue so selecting any song hits cache instantly
+                LaunchedEffect(queueListState, localQueue.size) {
+                    snapshotFlow {
+                        val info = queueListState.layoutInfo
+                        info.visibleItemsInfo.mapNotNull { visible ->
+                            localQueue.firstOrNull { it.instanceId == visible.key }?.track
+                        }
+                    }.collect { visibleTracks ->
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            visibleTracks.forEach { trk ->
+                                if (com.auralis.music.ui.theme.ArtworkPaletteCache.getCached(trk.id) == null) {
+                                    com.auralis.music.ui.theme.ArtworkPaletteCache.extractPalette(
+                                        context = context,
+                                        key = trk.id,
+                                        artworkUrl = trk.thumbnail
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                LaunchedEffect(queueListState) {
+                    snapshotFlow {
+                        queueListState.firstVisibleItemIndex == 0 && queueListState.firstVisibleItemScrollOffset == 0
+                    }
+                        .distinctUntilChanged()
+                        .collect { isAtTop ->
+                            if (isAtTop && !queueControlsVisible) {
+                                queueControlsVisible = true
+                                onQueueControlsVisibilityChange(true)
+                            }
+                        }
+                }
+
+                val queueNestedScrollConnection = remember {
+                    object : NestedScrollConnection {
+                        override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                            if (reorderableLazyListState.isAnyItemDragging) return Offset.Zero
+                            if (source == NestedScrollSource.UserInput && available.y != 0f) {
+                                userScrolledQueue = true
+                            }
+
+                            val delta = available.y
+                            if (delta < -2f && queueControlsVisible) {
+                                queueControlsVisible = false
+                                onQueueControlsVisibilityChange(false)
+                            } else if (delta > 2f && !queueControlsVisible) {
+                                queueControlsVisible = true
+                                onQueueControlsVisibilityChange(true)
+                            }
+                            return Offset.Zero
+                        }
+
+                        override fun onPostScroll(
+                            consumed: Offset,
+                            available: Offset,
+                            source: NestedScrollSource
+                        ): Offset {
+                            if (reorderableLazyListState.isAnyItemDragging) return Offset.Zero
+                            if (available.y > 2f && !queueControlsVisible) {
+                                queueControlsVisible = true
+                                onQueueControlsVisibilityChange(true)
+                            }
+                            return Offset.Zero
+                        }
+                    }
+                }
+
+                LazyColumn(
+                    state = queueListState,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .nestedScroll(queueNestedScrollConnection),
+                    // Room to scroll the last songs clear of the overlaid controls.
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                        bottom = baseBottomPadding + with(density) { extraBottomPaddingPx.toDp() }
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    val queueRow: @Composable androidx.compose.foundation.lazy.LazyItemScope.(QueueTrackItem, Boolean) -> Unit = { queueItem, inHistory ->
+                        val item = queueItem.track
+                        val isCurrent = localQueue.getOrNull(activeQueueIndex)?.instanceId == queueItem.instanceId
+                        val primaryColor = MaterialTheme.colorScheme.primary
+
+                        ReorderableItem(
+                            state = reorderableLazyListState,
+                            key = queueItem.instanceId,
+                            animateItemModifier = Modifier.animateItem(
+                                fadeInSpec = null,
+                                // A song that has just become History jumps straight to its place
+                                // above (off screen) instead of sliding up through the songs below.
+                                placementSpec = if (inHistory) null else PlayerTransitionMotion.queuePlacement,
+                                fadeOutSpec = null
+                            )
+                        ) { isDragging ->
+                            var isHandleHeld by remember { mutableStateOf(false) }
+                            var isRowHeld by remember { mutableStateOf(false) }
+                            // Holding/dragging a row just moves it: no background, border, bold
+                            // title or accent-tinted handle.
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(queueItemShape)
+                                    .pointerInput(queueItem.instanceId, queueLocked) {
+                                        if (queueLocked) return@pointerInput
+                                        awaitEachGesture {
+                                            awaitFirstDown(requireUnconsumed = false)
+                                            var longPressed = false
+                                            try {
+                                                withTimeout(350L) {
+                                                    waitForUpOrCancellation()
+                                                }
+                                            } catch (_: TimeoutCancellationException) {
+                                                longPressed = true
+                                                isRowHeld = true
+                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            }
+                                            if (longPressed) {
+                                                waitForUpOrCancellation()
+                                                isRowHeld = false
+                                            }
+                                        }
+                                    }
+                                    .then(
+                                        if (!queueLocked) {
+                                            Modifier.longPressDraggableHandle(
+                                                enabled = true,
+                                                onDragStarted = {
+                                                    isRowHeld = true
+                                                    startDragIndex = localQueue.indexOfFirst { it.instanceId == queueItem.instanceId }
+                                                },
+                                                onDragStopped = {
+                                                    isRowHeld = false
+                                                    lastDragEndTime = System.currentTimeMillis()
+                                                    val finalIdx = localQueue.indexOfFirst { it.instanceId == queueItem.instanceId }
+                                                    val startIdx = startDragIndex
+                                                    if (startIdx != -1 && finalIdx != -1 && startIdx != finalIdx) {
+                                                        onReorderQueue?.invoke(startIdx, finalIdx)
+                                                    }
+                                                    startDragIndex = -1
+                                                }
+                                            )
+                                        } else {
+                                            Modifier
+                                        }
+                                    )
+                                    .clickable(
+                                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                                        indication = null,
+                                        enabled = !reorderableLazyListState.isAnyItemDragging && (System.currentTimeMillis() - lastDragEndTime > 450L)
+                                    ) {
+                                        if (System.currentTimeMillis() - lastDragEndTime <= 450L) return@clickable
+                                        val localIndex = localQueue.indexOfFirst { it.instanceId == queueItem.instanceId }
+                                        val occurrence = localQueue.take(localIndex.coerceAtLeast(0)).count { it.track.id == item.id }
+                                        val targetIndex = queueSnapshot.indices.filter { queueSnapshot[it].id == item.id }.getOrNull(occurrence) ?: localIndex
+                                        if (targetIndex >= 0) {
+                                            if (!queueControlsVisible) pendingRevealTrackId = item.id
+                                            com.auralis.music.ui.theme.ArtworkPaletteCache.updateForTrack(context, item)
+                                            onSelectQueueTrack(targetIndex)
+                                        }
+                                    }
+                                    .padding(start = 8.dp, end = 2.dp, top = 6.dp, bottom = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
+                                    ArtworkCard(
+                                        url = item.thumbnail,
+                                        modifier = Modifier.fillMaxSize(),
+                                        cornerRadius = queueArtworkCorner,
+                                        contentDescription = item.title
+                                    )
+                                    if (isCurrent) {
+                                        Box(
+                                            Modifier
+                                                .fillMaxSize()
+                                                .clip(RoundedCornerShape(queueArtworkCorner))
+                                                .background(Color.Black.copy(alpha = 0.30f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = if (uiState.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                                contentDescription = str(R.string.currently_playing),
+                                                tint = Color.White,
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = item.title,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.SemiBold,
+                                        color = Color.White,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = if (item.duration > 0L) {
+                                            "${item.artist} · ${formatClassicTime(item.duration * 1000L)}"
+                                        } else item.artist,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = subtitleColor,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                IconButton(
+                                    onClick = { onShowTrackOptions(item) },
+                                    modifier = Modifier.size(40.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.MoreVert,
+                                        contentDescription = str(R.string.options_for_x, item.title),
+                                        tint = Color.White,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                                if (!queueLocked) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .pointerInput(queueItem.instanceId) {
+                                                awaitEachGesture {
+                                                    awaitFirstDown(requireUnconsumed = false)
+                                                    isHandleHeld = true
+                                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                    waitForUpOrCancellation()
+                                                    isHandleHeld = false
+                                                }
+                                            }
+                                            .draggableHandle(
+                                                onDragStarted = {
+                                                    isHandleHeld = true
+                                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                    startDragIndex = localQueue.indexOfFirst { it.instanceId == queueItem.instanceId }
+                                                },
+                                                onDragStopped = {
+                                                    isHandleHeld = false
+                                                    lastDragEndTime = System.currentTimeMillis()
+                                                    val finalIdx = localQueue.indexOfFirst { it.instanceId == queueItem.instanceId }
+                                                    val startIdx = startDragIndex
+                                                    if (startIdx != -1 && finalIdx != -1 && startIdx != finalIdx) {
+                                                        onReorderQueue?.invoke(startIdx, finalIdx)
+                                                    }
+                                                    startDragIndex = -1
+                                                }
+                                            ),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.DragHandle,
+                                            contentDescription = str(R.string.drag_to_reorder_x, item.title),
+                                            tint = Color.White.copy(alpha = 0.7f),
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (historyCount > 0) {
+                        item(key = "queue_history_header", contentType = "queue_header") {
+                            ClassicQueueSectionHeader(
+                                title = str(R.string.history),
+                                modifier = Modifier.animateItem(fadeInSpec = null, placementSpec = null, fadeOutSpec = null),
+                                action = if (onRemoveQueueItem != null) {
+                                    {
+                                        Text(
+                                            text = str(R.string.clear),
+                                            color = Color.White.copy(alpha = 0.75f),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .clickable {
+                                                    // Descending positions keep unplayed songs and duplicate occurrences intact.
+                                                    historyIndices.asReversed().forEach { onRemoveQueueItem(it) }
+                                                }
+                                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                        )
+                                    }
+                                } else null
+                            )
+                        }
+                        items(
+                            items = historyItems,
+                            key = { it.instanceId },
+                            contentType = { "queue_track" }
+                        ) { queueRow(it, true) }
+                    }
+
+                    item(key = "queue_continue_header", contentType = "queue_header") {
+                        ClassicQueueSectionHeader(
+                            title = str(R.string.continue_playing),
+                            subtitle = uiState.queueSourceTitle?.let { str(R.string.from_x, it) },
+                            modifier = Modifier
+                                .animateItem(fadeInSpec = null, placementSpec = null, fadeOutSpec = null)
+                                .padding(top = if (historyCount > 0) 10.dp else 0.dp),
+                            action = {
+                                IconButton(
+                                    onClick = {
+                                        queueLocked = !queueLocked
+                                        Toast.makeText(
+                                            queueContext,
+                                            if (queueLocked) str(R.string.queue_locked) else str(R.string.queue_unlocked_drag_the_handles_to_reord),
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    },
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = if (queueLocked) Icons.Default.Lock else Icons.Default.LockOpen,
+                                        contentDescription = if (queueLocked) str(R.string.unlock_queue_reordering) else str(R.string.lock_queue_reordering),
+                                        tint = if (queueLocked) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.75f),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                        )
+                    }
+                    items(
+                        items = localQueue.subList(activeQueueIndex.coerceAtMost(localQueue.size), localQueue.size).toList(),
+                        key = { it.instanceId },
+                        contentType = { "queue_track" }
+                    ) { queueRow(it, false) }
+                }
+            }
+
+            // 4. Playback Controls in Queue (Dynamic scroll visibility: hides on scroll down, reappears on scroll up)
+            if (showPlaybackControls) androidx.compose.animation.AnimatedVisibility(
+                visible = queueControlsVisible,
+                // Draw-layer fade + slide only, no expand/shrink, so the list never relayouts.
+                enter = fadeIn(tween(ClassicPlayerViewportMotion.ControlsEnterDurationMillis, easing = FastOutSlowInEasing)) +
+                    slideInVertically(tween(ClassicPlayerViewportMotion.ControlsEnterDurationMillis, easing = FastOutSlowInEasing)) {
+                        it / ClassicPlayerViewportMotion.ControlsSlideFraction
+                    },
+                exit = fadeOut(tween(ClassicPlayerViewportMotion.ControlsExitDurationMillis, easing = FastOutSlowInEasing)) +
+                    slideOutVertically(tween(ClassicPlayerViewportMotion.ControlsExitDurationMillis, easing = FastOutSlowInEasing)) {
+                        it / ClassicPlayerViewportMotion.ControlsSlideFraction
+                    },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        // Keep the last measured height (not reset on hide) so the list's bottom
+                        // padding stays constant and the list itself never resizes.
+                        .onSizeChanged { if (it.height > 0) queueControlsHeightPx = it.height }
+                        .then(
+                            if (queueHazeState != null) {
+                                // Same untinted frosted glass as the lyrics tab (no black scrim).
+                                Modifier.hazeEffect(
+                                    state = queueHazeState,
+                                    style = HazeStyle(
+                                        backgroundColor = Color.Black,
+                                        tint = HazeTint(Color.Transparent),
+                                        blurRadius = 28.dp,
+                                        noiseFactor = 0f
+                                    )
+                                ) {
+                                    blurEnabled = true
+                                    canDrawArea = { true }
+                                    inputScale = dev.chrisbanes.haze.HazeInputScale.Auto
+                                    mask = Brush.verticalGradient(
+                                        0.00f to Color.Transparent,
+                                        0.22f to Color.Black,
+                                        0.88f to Color.Black,
+                                        1.00f to Color.Transparent
+                                    )
+                                }
+                            } else Modifier
+                        )
+                        .padding(top = 16.dp)
+                ) {
+                    ClassicCompactPlaybackControls(
+                        track = track,
+                        uiState = uiState,
+                        seekBarPositionState = seekBarPositionState,
+                        totalDurationMs = totalDurationMs,
+                        isScrubbing = isScrubbing,
+                        onScrubbing = { scrubbing, posMs ->
+                            queueControlsVisible = true
+                            onScrubbing(scrubbing, posMs)
+                        },
+                        onSeekTo = { posMs ->
+                            queueControlsVisible = true
+                            onSeekTo(posMs)
+                        },
+                        onPlayPauseClick = {
+                            queueControlsVisible = true
+                            onPlayPauseClick()
+                        },
+                        onPreviousClick = {
+                            queueControlsVisible = true
+                            onPreviousClick()
+                        },
+                        onNextClick = {
+                            queueControlsVisible = true
+                            onNextClick()
+                        },
+                        onToggleShuffle = onToggleShuffle,
+                        onToggleRepeat = onToggleRepeat,
+                        sliderStyle = sliderStyle,
+                        controlsAlpha = controlsAlpha,
+                        // Shuffle and Repeat already live in Queue's top squircle row.
+                        showTransportPills = false,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 6.dp)
+                    )
+                    if (controlsBottomSpacerDp > 0.dp) {
+                        Spacer(modifier = Modifier.height(controlsBottomSpacerDp))
+                    }
+                }
+            }
+        }
+
+        if (showBottomBar) {
+            ClassicBottomBar(
+                isQueueActive = true,
+                isLyricsActive = false,
+                isTimerActive = uiState.sleepTimerSeconds > 0 || uiState.isSleepTimerEndOfSong,
+                isShuffled = uiState.isShuffled,
+                repeatMode = uiState.repeatMode,
+                onToggleQueue = onCloseQueue,
+                onToggleShuffle = onToggleShuffle,
+                onToggleRepeat = onToggleRepeat,
+                onShowOutputPicker = onShowOutputPicker,
+                onShowSleepDialog = onShowSleepDialog,
+                onToggleLyrics = onToggleLyrics,
+                controlsAlpha = controlsAlpha,
+                showUtilityActions = false,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 6.dp)
+            )
+        }
+    }
+}
+
+private fun openAudioOutputSettings(context: Context) {
+    try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val panelIntent = Intent(Settings.Panel.ACTION_VOLUME)
+            panelIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(panelIntent)
+        } else {
+            val settingsIntent = Intent(Settings.ACTION_SOUND_SETTINGS)
+            settingsIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(settingsIntent)
+        }
+    } catch (_: Exception) {
+        try {
+            val settingsIntent = Intent(Settings.ACTION_SOUND_SETTINGS)
+            settingsIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(settingsIntent)
+        } catch (_: Exception) {
+            Toast.makeText(context, str(R.string.audio_output_settings_unavailable), Toast.LENGTH_SHORT).show()
+        }
+    }
+}
+
+/** Section title row in the classic Queue ("History", "Continue Playing"). */
+@Composable
+private fun ClassicQueueSectionHeader(
+    title: String,
+    modifier: Modifier = Modifier,
+    subtitle: String? = null,
+    action: (@Composable () -> Unit)? = null
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(start = 8.dp, end = 2.dp, top = 6.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                maxLines = 1
+            )
+            if (subtitle != null) {
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.6f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+        action?.invoke()
+    }
+}

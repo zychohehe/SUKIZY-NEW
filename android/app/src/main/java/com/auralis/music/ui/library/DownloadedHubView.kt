@@ -1,0 +1,754 @@
+package com.auralis.music.ui.library
+
+import com.auralis.music.data.download.DownloadTrackOrder
+import com.auralis.music.data.download.downloadedFolderMembership
+import com.auralis.music.R
+import com.auralis.music.ui.i18n.str
+
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.auralis.music.data.download.AuralisDownloadManager
+import com.auralis.music.data.download.PlaylistDownloadCoordinator
+import com.auralis.music.data.download.PlaylistDownloadJobEntity
+import com.auralis.music.domain.model.Playlist
+import com.auralis.music.domain.model.Track
+import com.auralis.music.ui.components.ArtworkCard
+import com.auralis.music.ui.components.tactileBounce
+import com.auralis.music.ui.theme.dynamicBackground
+import com.auralis.music.ui.theme.dynamicOnBackground
+import com.auralis.music.ui.theme.dynamicOnSurface
+import com.auralis.music.ui.theme.dynamicPrimary
+import com.auralis.music.ui.theme.dynamicSurface
+import com.auralis.music.ui.components.bottomChromePadding
+
+private data class DownloadFolderItem(
+    val id: String,
+    val title: String,
+    val subtitle: String,
+    val totalCount: Int,
+    val downloadedTracks: List<Track>,
+    val status: String,
+    val completedCount: Int,
+    val failedCount: Int,
+    val worthRetrying: Boolean = true,
+    val jobId: String? = null,
+    val coverUrl: String? = null,
+    val isAllSongs: Boolean = false,
+    val isIndividualSongs: Boolean = false
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DownloadedHubView(
+    downloadedTracks: List<Track>,
+    downloadedJobs: List<PlaylistDownloadJobEntity>,
+    userPlaylists: List<Playlist>,
+    currentTrackId: String?,
+    isPlaying: Boolean,
+    onBack: () -> Unit,
+    onOpenFolder: (Playlist) -> Unit,
+    onPlayTracks: (Track, List<Track>) -> Unit,
+    onDeleteJob: (String) -> Unit,
+    onRetryJob: (String) -> Unit,
+    onClearAllDownloads: () -> Unit,
+    modifier: Modifier = Modifier,
+    downloadTrackOrders: Map<String, List<String>> = emptyMap()
+) {
+    var searchQuery by remember { mutableStateOf("") }
+    var isSearchActive by remember { mutableStateOf(false) }
+    var showClearDialog by remember { mutableStateOf(false) }
+    var jobToDelete by remember { mutableStateOf<String?>(null) }
+
+    // A download keeps the song list from when it started, so songs added to the playlist later
+    // were never fetched and its folder read as complete, 2 songs short.
+    val appContext = androidx.compose.ui.platform.LocalContext.current.applicationContext
+    androidx.compose.runtime.LaunchedEffect(downloadedJobs, userPlaylists) {
+        downloadedJobs.filter { it.status == "COMPLETE" && it.offlineEnabled }.forEach { job ->
+            val playlist = userPlaylists.firstOrNull { it.id == job.playlistId } ?: return@forEach
+            val saved = PlaylistDownloadCoordinator.tracks(job).mapTo(mutableSetOf()) { it.id }
+            if (playlist.tracks.any { it.id !in saved && !it.id.startsWith("unavailable:") }) {
+                PlaylistDownloadCoordinator.enqueue(appContext, job.playlistId, playlist.title, playlist.tracks, askFirst = false)
+            }
+        }
+    }
+
+    val orderedDownloads = remember(downloadedTracks, downloadTrackOrders) {
+        DownloadTrackOrder.apply(downloadedTracks, downloadTrackOrders["smart_downloaded_all"])
+    }
+
+    val individualIds by AuralisDownloadManager.individualDownloadIds.collectAsState()
+    // Build the list of folders from verified live downloads, not historical job counts.
+    val folders = remember(downloadedTracks, downloadedJobs, userPlaylists, downloadTrackOrders, individualIds) {
+        val list = mutableListOf<DownloadFolderItem>()
+        val accountedTrackIds = mutableSetOf<String>()
+        val downloadedIds = downloadedTracks.mapTo(mutableSetOf()) { it.id }
+        val downloadedById = downloadedTracks.associateBy { it.id }
+
+        // 1. Jobs from PlaylistDownloadCoordinator, newest first by when they started. Jobs arrive
+        // by last update, which made folders swap places every time one finished a song.
+        for (job in downloadedJobs.sortedWith(compareByDescending<PlaylistDownloadJobEntity> { it.createdAt }.thenBy { it.jobId })) {
+            val allTracks = PlaylistDownloadCoordinator.tracks(job)
+            val membership = downloadedFolderMembership(
+                allTracks.map { it.id }, PlaylistDownloadCoordinator.results(job),
+                downloadedIds, individualIds, job.status == "DOWNLOADING"
+            )
+            val downloadedForJob = allTracks.filter { track ->
+                track.id in membership.downloadedIds
+            }.map { downloadedById[it.id] ?: it }
+
+            val notOnYouTube = PlaylistDownloadCoordinator.results(job).count { AuralisDownloadManager.isNotOnYouTubeError(it.error) }
+            if (membership.visible) {
+                // Every downloaded song of this playlist belongs to it, even before the job has
+                // recorded its result: a song is saved a moment before the job copies it to the
+                // public folder and records it, and in that gap it showed up as a one-song
+                // "Individual Songs" folder that flashed in and out for every track.
+                accountedTrackIds.addAll(membership.accountedIds)
+                val originalPlaylist = userPlaylists.firstOrNull {
+                    it.id == job.playlistId || it.title.equals(job.playlistName, ignoreCase = true)
+                }
+                val resolvedCoverUrl = if (downloadedForJob.any { it.thumbnail == com.auralis.music.data.download.DownloadArtworkPolicy.HIDDEN }) {
+                    downloadedForJob.firstOrNull { it.thumbnail.isNotBlank() && it.thumbnail != com.auralis.music.data.download.DownloadArtworkPolicy.HIDDEN }?.thumbnail
+                        ?: com.auralis.music.data.download.DownloadArtworkPolicy.HIDDEN
+                } else originalPlaylist?.coverUrl?.takeIf { it.isNotBlank() }
+
+                list.add(
+                    DownloadFolderItem(
+                        id = job.jobId,
+                        title = job.playlistName,
+                        subtitle = when (job.status) {
+                            "DOWNLOADING" -> str(R.string.downloading_x_of_x_songs, job.completedCount, allTracks.size)
+                            "PARTIAL_FAILURE" -> when {
+                                notOnYouTube == 0 -> str(R.string.x_of_x_downloaded_x_failed, downloadedForJob.size, allTracks.size, job.failedCount)
+                                notOnYouTube >= job.failedCount -> str(R.string.x_of_x_downloaded_x_not_on_youtube, downloadedForJob.size, allTracks.size, notOnYouTube)
+                                else -> str(R.string.x_of_x_downloaded_x_failed_x_not_on_youtube, downloadedForJob.size, allTracks.size, job.failedCount - notOnYouTube, notOnYouTube)
+                            }
+                            else -> "${downloadedForJob.size} songs • Offline"
+                        },
+                        totalCount = allTracks.size,
+                        downloadedTracks = DownloadTrackOrder.apply(
+                            downloadedForJob, downloadTrackOrders["smart_downloaded_folder_${job.jobId}"]),
+                        status = job.status,
+                        completedCount = job.completedCount,
+                        failedCount = job.failedCount,
+                        worthRetrying = job.failedCount > notOnYouTube,
+                        jobId = job.jobId,
+                        coverUrl = resolvedCoverUrl
+                    )
+                )
+            }
+        }
+
+        // 2. Individual downloads (tracks not belonging to any downloaded playlist folder)
+        val individualTracks = downloadedTracks.filter { it.id !in accountedTrackIds }
+        if (individualTracks.isNotEmpty()) {
+            list.add(
+                DownloadFolderItem(
+                    id = "individual_downloads",
+                    title = str(R.string.individual_songs),
+                    subtitle = str(R.string.x_songs_downloaded_directly, individualTracks.size),
+                    totalCount = individualTracks.size,
+                    downloadedTracks = DownloadTrackOrder.apply(
+                        individualTracks, downloadTrackOrders["smart_downloaded_folder_individual_downloads"]),
+                    status = "COMPLETE",
+                    completedCount = individualTracks.size,
+                    failedCount = 0,
+                    jobId = null,
+                    coverUrl = null,
+                    isIndividualSongs = true
+                )
+            )
+        }
+
+        list
+    }
+
+    val filteredFolders = remember(folders, searchQuery) {
+        if (searchQuery.isBlank()) folders
+        else folders.filter {
+            it.title.contains(searchQuery, ignoreCase = true) ||
+                it.downloadedTracks.any { track ->
+                    track.title.contains(searchQuery, ignoreCase = true) ||
+                        track.artist.contains(searchQuery, ignoreCase = true)
+                }
+        }
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(MaterialTheme.dynamicBackground)
+            .statusBarsPadding()
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            com.auralis.music.ui.glass.PageHeading(
+                title = str(R.string.downloaded),
+                onBack = onBack,
+                subtitle = str(R.string.x_offline_songs_x_folders, downloadedTracks.size, folders.size)
+            ) {
+                // Search Toggle
+                IconButton(onClick = {
+                    isSearchActive = !isSearchActive
+                    if (!isSearchActive) searchQuery = ""
+                }) {
+                    Icon(
+                        imageVector = if (isSearchActive) Icons.Default.Close else Icons.Default.Search,
+                        contentDescription = str(R.string.search),
+                        tint = MaterialTheme.dynamicOnBackground
+                    )
+                }
+
+                // Overflow Menu (Clear All)
+                var showMenu by remember { mutableStateOf(false) }
+                Box {
+                    IconButton(onClick = { showMenu = true }) {
+                        Icon(
+                            imageVector = Icons.Default.MoreVert,
+                            contentDescription = str(R.string.options),
+                            tint = MaterialTheme.dynamicOnBackground
+                        )
+                    }
+                    com.auralis.music.ui.components.AuralisDropdownMenu(
+                        expanded = showMenu,
+                        onDismissRequest = { showMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text(str(R.string.clear_all_downloads), color = MaterialTheme.colorScheme.error) },
+                            leadingIcon = {
+                                Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                            },
+                            onClick = {
+                                showMenu = false
+                                showClearDialog = true
+                            }
+                        )
+                    }
+                }
+            
+            }
+
+            // ── SEARCH BAR (if active) ──
+            if (isSearchActive) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text(str(R.string.search_folders_or_tracks), color = MaterialTheme.dynamicOnSurface.copy(alpha = 0.6f)) },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.dynamicPrimary,
+                        unfocusedBorderColor = MaterialTheme.dynamicPrimary.copy(alpha = 0.3f),
+                        focusedContainerColor = MaterialTheme.dynamicSurface,
+                        unfocusedContainerColor = MaterialTheme.dynamicSurface,
+                        focusedTextColor = MaterialTheme.dynamicOnSurface,
+                        unfocusedTextColor = MaterialTheme.dynamicOnSurface
+                    ),
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp)
+                )
+            }
+
+            // ── EMPTY STATE ──
+            if (downloadedTracks.isEmpty() && downloadedJobs.none { it.status == "DOWNLOADING" }) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(32.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CloudDownload,
+                            contentDescription = null,
+                            tint = MaterialTheme.dynamicPrimary.copy(alpha = 0.7f),
+                            modifier = Modifier.size(64.dp)
+                        )
+                        Text(
+                            text = str(R.string.no_offline_downloads_yet),
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.dynamicOnBackground
+                        )
+                        Text(
+                            text = str(R.string.download_your_favorite_playlists_and_son),
+                            fontSize = 13.sp,
+                            color = MaterialTheme.dynamicOnBackground.copy(alpha = 0.6f),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
+                }
+            } else {
+                LazyColumn(
+                    contentPadding = bottomChromePadding(start = 16.dp, end = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    // ── QUICK PLAY BANNER: ALL DOWNLOADED SONGS ──
+                    if (searchQuery.isBlank() && downloadedTracks.isNotEmpty()) {
+                        item(key = "all_downloaded_banner") {
+                            AllDownloadedSongsCard(
+                                totalTracks = downloadedTracks.size,
+                                onPlayAll = {
+                                    orderedDownloads.firstOrNull()?.let { first ->
+                                        onPlayTracks(first, orderedDownloads)
+                                    }
+                                },
+                                onShuffle = {
+                                    val shuffled = orderedDownloads.shuffled()
+                                    shuffled.firstOrNull()?.let { first ->
+                                        onPlayTracks(first, shuffled)
+                                    }
+                                },
+                                onClick = {
+                                    onOpenFolder(
+                                        Playlist(
+                                            id = "smart_downloaded_all",
+                                            title = str(R.string.all_downloaded_songs),
+                                            description = str(R.string.x_offline_songs, downloadedTracks.size),
+                                            coverUrl = null,
+                                            tracks = orderedDownloads
+                                        )
+                                    )
+                                }
+                            )
+                        }
+                    }
+
+                    // ── SECTION HEADER: FOLDERS & PLAYLISTS ──
+                    if (filteredFolders.isNotEmpty()) {
+                        item(key = "folders_header") {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 8.dp, bottom = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Folder,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.dynamicPrimary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = str(R.string.downloaded_folders_x, filteredFolders.size),
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.dynamicOnBackground.copy(alpha = 0.85f)
+                                )
+                            }
+                        }
+
+                        // ── FOLDER ITEMS ──
+                        items(filteredFolders, key = { it.id }) { folder ->
+                            FolderCardItem(
+                                folder = folder,
+                                onClick = {
+                                    onOpenFolder(
+                                        Playlist(
+                                            id = "smart_downloaded_folder_${folder.id}",
+                                            title = folder.title,
+                                            description = "${folder.downloadedTracks.size} of ${folder.totalCount} offline songs",
+                                            coverUrl = folder.coverUrl,
+                                            tracks = folder.downloadedTracks
+                                        )
+                                    )
+                                },
+                                onPlayAll = {
+                                    folder.downloadedTracks.firstOrNull()?.let { first ->
+                                        onPlayTracks(first, folder.downloadedTracks)
+                                    }
+                                },
+                                onShuffle = {
+                                    val shuffled = folder.downloadedTracks.shuffled()
+                                    shuffled.firstOrNull()?.let { first ->
+                                        onPlayTracks(first, shuffled)
+                                    }
+                                },
+                                onRetry = {
+                                    folder.jobId?.let { onRetryJob(it) }
+                                },
+                                onDelete = {
+                                    folder.jobId?.let { jobToDelete = it }
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ── CLEAR ALL DOWNLOADS DIALOG ──
+    if (showClearDialog) {
+        com.auralis.music.ui.components.AuralisConfirmDialog(
+            title = str(R.string.clear_all_downloads_2),
+            message = str(R.string.this_will_remove_all_downloaded_offline),
+            confirmLabel = str(R.string.clear_all),
+            onDismiss = { showClearDialog = false },
+            onConfirm = {
+                        showClearDialog = false
+                        onClearAllDownloads()
+                    },
+        )
+    }
+
+    // ── DELETE SINGLE PLAYLIST FOLDER DIALOG ──
+    jobToDelete?.let { jobId ->
+        com.auralis.music.ui.components.AuralisConfirmDialog(
+            title = str(R.string.delete_playlist_downloads),
+            message = str(R.string.remove_downloaded_tracks_for_this_playli),
+            confirmLabel = str(R.string.delete),
+            onDismiss = { jobToDelete = null },
+            onConfirm = {
+                        onDeleteJob(jobId)
+                        jobToDelete = null
+                    },
+        )
+    }
+}
+
+@Composable
+private fun AllDownloadedSongsCard(
+    totalTracks: Int,
+    onPlayAll: () -> Unit,
+    onShuffle: () -> Unit,
+    onClick: () -> Unit
+) {
+    val gradientBrush = Brush.horizontalGradient(
+        colors = listOf(
+            MaterialTheme.dynamicPrimary.copy(alpha = 0.22f),
+            MaterialTheme.dynamicSurface.copy(alpha = 0.85f)
+        )
+    )
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .border(1.dp, MaterialTheme.dynamicPrimary.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
+            .clickable { onClick() },
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.dynamicSurface)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(gradientBrush)
+                .padding(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(52.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.dynamicPrimary.copy(alpha = 0.25f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CloudDone,
+                        contentDescription = null,
+                        tint = MaterialTheme.dynamicPrimary,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(14.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = str(R.string.all_downloaded_songs),
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.dynamicOnBackground
+                    )
+                    Text(
+                        text = str(R.string.x_offline_songs_available, totalTracks),
+                        fontSize = 12.sp,
+                        color = MaterialTheme.dynamicOnBackground.copy(alpha = 0.65f)
+                    )
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    IconButton(
+                        onClick = onShuffle,
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.dynamicPrimary.copy(alpha = 0.15f))
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Shuffle,
+                            contentDescription = str(R.string.shuffle),
+                            tint = MaterialTheme.dynamicPrimary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+
+                    IconButton(
+                        onClick = onPlayAll,
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.dynamicPrimary)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PlayArrow,
+                            contentDescription = str(R.string.play_all),
+                            tint = MaterialTheme.dynamicSurface,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FolderCardItem(
+    folder: DownloadFolderItem,
+    onClick: () -> Unit,
+    onPlayAll: () -> Unit,
+    onShuffle: () -> Unit,
+    onRetry: () -> Unit,
+    onDelete: () -> Unit
+) {
+    var showMenu by remember { mutableStateOf(false) }
+    val isDownloading = folder.status == "DOWNLOADING"
+    val isFailedOrPartial = folder.status in setOf("PARTIAL_FAILURE", "FAILED")
+
+    val infiniteTransition = rememberInfiniteTransition(label = "downloadingSpin")
+    val rotation by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1500, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "rotation"
+    )
+
+    val gradientBrush = Brush.horizontalGradient(
+        colors = listOf(
+            MaterialTheme.dynamicPrimary.copy(alpha = 0.12f),
+            MaterialTheme.dynamicSurface.copy(alpha = 0.85f)
+        )
+    )
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .border(
+                width = 1.dp,
+                color = if (isDownloading) MaterialTheme.dynamicPrimary.copy(alpha = 0.55f)
+                else MaterialTheme.dynamicPrimary.copy(alpha = 0.20f),
+                shape = RoundedCornerShape(14.dp)
+            )
+            .clickable { onClick() },
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.dynamicSurface)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(gradientBrush)
+                .padding(12.dp)
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // ── FOLDER ARTWORK / ICON ──
+                    Box(
+                        modifier = Modifier
+                            .size(54.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(MaterialTheme.dynamicPrimary.copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        val displayArt = folder.coverUrl
+                            ?: folder.downloadedTracks.firstOrNull { it.thumbnail.isNotBlank() && it.thumbnail != com.auralis.music.data.download.DownloadArtworkPolicy.HIDDEN }?.thumbnail
+                        if (!displayArt.isNullOrBlank()) {
+                            ArtworkCard(
+                                url = displayArt,
+                                contentDescription = folder.title,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                            // Folder Badge Overlay
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .size(20.dp)
+                                    .clip(RoundedCornerShape(topStart = 6.dp))
+                                    .background(MaterialTheme.dynamicSurface.copy(alpha = 0.90f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Folder,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.dynamicPrimary,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                            }
+                        } else {
+                            Icon(
+                                imageVector = if (folder.isIndividualSongs) Icons.Default.MusicNote else Icons.Default.Folder,
+                                contentDescription = null,
+                                tint = MaterialTheme.dynamicPrimary,
+                                modifier = Modifier.size(28.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    // ── FOLDER TITLE & SUBTITLE ──
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = folder.title,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.dynamicOnBackground,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = folder.subtitle,
+                            fontSize = 12.sp,
+                            color = if (isFailedOrPartial && folder.worthRetrying) MaterialTheme.colorScheme.error
+                            else if (isDownloading) MaterialTheme.dynamicPrimary
+                            else MaterialTheme.dynamicOnBackground.copy(alpha = 0.65f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    // ── STATUS INDICATOR OR RETRY ──
+                    if (isDownloading) {
+                        Icon(
+                            imageVector = Icons.Default.Sync,
+                            contentDescription = str(R.string.downloading),
+                            tint = MaterialTheme.dynamicPrimary,
+                            modifier = Modifier
+                                .size(22.dp)
+                                .rotate(rotation)
+                        )
+                    } else if (isFailedOrPartial && folder.worthRetrying && folder.jobId != null) {
+                        IconButton(onClick = onRetry, modifier = Modifier.size(32.dp)) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = str(R.string.retry),
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+
+                    // ── OVERFLOW MENU ──
+                    Box {
+                        IconButton(onClick = { showMenu = true }, modifier = Modifier.size(32.dp)) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = str(R.string.folder_options),
+                                tint = MaterialTheme.dynamicOnBackground.copy(alpha = 0.7f),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        com.auralis.music.ui.components.AuralisDropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(str(R.string.play_all)) },
+                                leadingIcon = { Icon(Icons.Default.PlayArrow, contentDescription = null) },
+                                onClick = {
+                                    showMenu = false
+                                    onPlayAll()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(str(R.string.shuffle)) },
+                                leadingIcon = { Icon(Icons.Default.Shuffle, contentDescription = null) },
+                                onClick = {
+                                    showMenu = false
+                                    onShuffle()
+                                }
+                            )
+                            if (isFailedOrPartial && folder.jobId != null) {
+                                DropdownMenuItem(
+                                    text = { Text(str(R.string.retry_download)) },
+                                    leadingIcon = { Icon(Icons.Default.Refresh, contentDescription = null) },
+                                    onClick = {
+                                        showMenu = false
+                                        onRetry()
+                                    }
+                                )
+                            }
+                            if (folder.jobId != null) {
+                                DropdownMenuItem(
+                                    text = { Text(str(R.string.delete_downloads), color = MaterialTheme.colorScheme.error) },
+                                    leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+                                    onClick = {
+                                        showMenu = false
+                                        onDelete()
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // ── LIVE PROGRESS BAR (if currently downloading) ──
+                if (isDownloading && folder.totalCount > 0) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    val progress = (folder.completedCount.toFloat() / folder.totalCount.toFloat()).coerceIn(0.02f, 1f)
+                    LinearProgressIndicator(
+                        progress = { progress },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(4.dp)
+                            .clip(RoundedCornerShape(2.dp)),
+                        color = MaterialTheme.dynamicPrimary,
+                        trackColor = MaterialTheme.dynamicPrimary.copy(alpha = 0.15f)
+                    )
+                }
+            }
+        }
+    }
+}
