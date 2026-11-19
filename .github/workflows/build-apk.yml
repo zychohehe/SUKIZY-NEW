@@ -1,211 +1,103 @@
-name: SUKIZY BUILD APK
+name: Build APK
 
 on:
-  push:
-    paths-ignore:
-      - '**.md'
-  pull_request:
-    paths-ignore:
-      - '**.md'
   workflow_dispatch:
+  push:
+    branches: [main, master]
+    paths-ignore: ['**.md', 'docs/**']
 
-permissions:
-  contents: read
-
-# Push baru di branch yang sama membatalkan build lama.
 concurrency:
-  group: sukizy-build-${{ github.ref }}
+  group: build-apk-${{ github.ref }}
   cancel-in-progress: true
-
-env:
-  GRADLE_OPTS: >-
-    -Dorg.gradle.jvmargs=-Xmx6g\ -XX:MaxMetaspaceSize=1g\ -XX:+UseParallelGC\ -Dfile.encoding=UTF-8
-    -Dorg.gradle.parallel=true
-    -Dorg.gradle.caching=true
 
 jobs:
   build:
-    name: SUKIZY BUILD APK
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-
+    timeout-minutes: 60
+    env:
+      # Versi ini harus sama dengan android/app/build.gradle.kts
+      NDK_VERSION: "27.2.12479018"
+      CMAKE_VERSION: "3.22.1"
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          fetch-depth: 1
+      - uses: actions/checkout@v4
 
-      # Repo dari ZIP tidak punya link submodule, jadi folder kosong. Clone hanya jika kosong.
-      - name: Fetch submodules if missing
-        shell: bash
-        run: |
-          set -euo pipefail
-          clone_if_empty() {
-            local dir="$1" url="$2" branch="${3:-}"
-            if [ -z "$(ls -A "$dir" 2>/dev/null)" ]; then
-              echo "$dir kosong, clone dari $url"
-              rm -rf "$dir"
-              git clone --depth 1 ${branch:+--branch "$branch"} "$url" "$dir"
-            fi
-          }
-          clone_if_empty metroproto https://github.com/MetrolistGroup/metroproto.git
-          clone_if_empty opusDecoder/src/main/jni/libopus https://github.com/xiph/opus.git v1.5.2
-
-      # androidApp memakai toolchain Java 25.
-      - name: Set up JDK 25
-        uses: actions/setup-java@v4
+      # Gradle 8.11 tidak mendukung JDK 25. Pakai 21 (sama dengan lokal).
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '25'
+          java-version: "21"
 
-      # Cache hanya ditulis dari branch default; branch lain hanya membaca.
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          cache-read-only: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) }}
+      - uses: gradle/actions/setup-gradle@v4
 
-      - name: Resolve SDK, NDK and CMake versions
-        id: ver
-        shell: bash
+      # gradle.properties berisi path Windows (C:/Program Files/...) yang bikin build Linux gagal.
+      - name: Hapus org.gradle.java.home milik Windows
+        run: sed -i '/^org.gradle.java.home=/d' gradle.properties
+
+      - name: Install NDK dan CMake
         run: |
           set -euo pipefail
-          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
-          NDK_VERSION="$(sed -n 's/^androidNdk = "\(.*\)"/\1/p' gradle/libs.versions.toml)"
-          CMAKE_VERSION="$(sed -n 's/^val opusCmakeVersion = "\(.*\)"/\1/p' opusDecoder/build.gradle.kts)"
-          test -n "$NDK_VERSION" && test -n "$CMAKE_VERSION"
-          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
-          echo "sdk.dir=$SDK_ROOT" > local.properties
-          {
-            echo "sdk=$SDK_ROOT"
-            echo "ndk=$NDK_VERSION"
-            echo "cmake=$CMAKE_VERSION"
-          } >> "$GITHUB_OUTPUT"
-          echo "NDK $NDK_VERSION, CMake $CMAKE_VERSION"
-
-      # Cache NDK + CMake supaya tidak diunduh ulang tiap build.
-      - name: Cache NDK and CMake
-        id: sdkcache
-        uses: actions/cache@v4
-        with:
-          path: |
-            ${{ steps.ver.outputs.sdk }}/ndk/${{ steps.ver.outputs.ndk }}
-            ${{ steps.ver.outputs.sdk }}/cmake/${{ steps.ver.outputs.cmake }}
-          key: android-native-${{ runner.os }}-ndk${{ steps.ver.outputs.ndk }}-cmake${{ steps.ver.outputs.cmake }}
-
-      - name: Install NDK and CMake
-        if: steps.sdkcache.outputs.cache-hit != 'true'
-        shell: bash
-        env:
-          SDK_ROOT: ${{ steps.ver.outputs.sdk }}
-          NDK_VERSION: ${{ steps.ver.outputs.ndk }}
-          CMAKE_VERSION: ${{ steps.ver.outputs.cmake }}
-        run: |
-          set -euo pipefail
-          SDKMANAGER="$(command -v sdkmanager || true)"
-          if [ -z "$SDKMANAGER" ]; then
-            SDKMANAGER="$(ls "$SDK_ROOT"/cmdline-tools/*/bin/sdkmanager | head -n 1)"
-          fi
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDKMANAGER="$(command -v sdkmanager || ls "$SDK_ROOT"/cmdline-tools/*/bin/sdkmanager | head -n 1)"
           set +o pipefail
           yes | "$SDKMANAGER" --sdk_root="$SDK_ROOT" --licenses > /dev/null
           set -o pipefail
-          "$SDKMANAGER" --sdk_root="$SDK_ROOT" "ndk;$NDK_VERSION" "cmake;$CMAKE_VERSION"
+          "$SDKMANAGER" --sdk_root="$SDK_ROOT" "ndk;${NDK_VERSION}" "cmake;${CMAKE_VERSION}"
+          echo "sdk.dir=$SDK_ROOT" > local.properties
 
-      # Runner baru membuat debug key acak tiap run, sehingga APK tidak bisa menimpa versi lama.
-      # Key tetap dari secret SUKIZY_DEBUG_KEYSTORE_B64 membuat semua build bisa saling update.
-      - name: Restore fixed debug signing key
-        shell: bash
+      # Discord Social SDK bersifat proprietary dan di-.gitignore, jadi tidak ada di repo.
+      # Cara 1: commit file-nya ke repo PRIVATE (hapus barisnya dari .gitignore).
+      # Cara 2: simpan zip-nya di URL privat dan isi secret DISCORD_SDK_URL.
+      #   Isi zip: libs/*.jar, jniLibs/<abi>/libdiscord_partner_sdk.so, discord/*.h
+      - name: Siapkan Discord Social SDK
         env:
-          KEYSTORE_B64: ${{ secrets.SUKIZY_DEBUG_KEYSTORE_B64 }}
+          DISCORD_SDK_URL: ${{ secrets.DISCORD_SDK_URL }}
         run: |
           set -euo pipefail
-          if [ -n "$KEYSTORE_B64" ]; then
-            mkdir -p "$HOME/.android"
-            printf '%s' "$KEYSTORE_B64" | base64 -d > "$HOME/.android/debug.keystore"
-            chmod 600 "$HOME/.android/debug.keystore"
-            echo "Memakai debug keystore tetap dari secret."
+          APP=android/app
+          if [ ! -f "$APP/libs/discord_partner_sdk.jar" ] && [ -n "${DISCORD_SDK_URL:-}" ]; then
+            curl -fsSL "$DISCORD_SDK_URL" -o /tmp/discord-sdk.zip
+            mkdir -p "$APP/libs" "$APP/src/main/jniLibs" "$APP/src/main/cpp/discord"
+            unzip -q -o /tmp/discord-sdk.zip -d /tmp/discord-sdk
+            cp -r /tmp/discord-sdk/libs/. "$APP/libs/"
+            cp -r /tmp/discord-sdk/jniLibs/. "$APP/src/main/jniLibs/"
+            cp -r /tmp/discord-sdk/discord/. "$APP/src/main/cpp/discord/"
+          fi
+          for f in "$APP/libs/discord_partner_sdk.jar" "$APP/libs/libwebrtc.jar"; do
+            [ -f "$f" ] || { echo "::error::$f tidak ada. Tambahkan Discord Social SDK (lihat komentar di workflow)."; exit 1; }
+          done
+
+      # Release butuh google-services.json. Isi secret GOOGLE_SERVICES_JSON dengan isi file aslinya.
+      # Kalau kosong, dipakai file contoh supaya build tetap jalan (login/sync Firebase tidak akan berfungsi).
+      - name: Siapkan google-services.json
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "${GOOGLE_SERVICES_JSON:-}" ]; then
+            printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
           else
-            echo "::warning::Secret SUKIZY_DEBUG_KEYSTORE_B64 belum diset. Build ini bertanda tangan acak dan tidak bisa menimpa build sebelumnya; uninstall dulu app lama."
+            echo "::warning::Secret GOOGLE_SERVICES_JSON kosong, memakai google-services.example.json"
+            cp android/app/google-services.example.json android/app/google-services.json
           fi
 
-      - name: Build debug APK
-        run: |
-          chmod +x ./gradlew
-          ./gradlew :androidApp:assembleDebug \
-            --no-daemon \
-            --no-configuration-cache \
-            --parallel \
-            --build-cache \
-            --stacktrace
+      - name: Build release APK
+        env:
+          AURALIS_POTOKEN_API_KEY: ${{ secrets.AURALIS_POTOKEN_API_KEY }}
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
+          SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
+        run: chmod +x gradlew && ./gradlew :app:assembleRelease --stacktrace
 
-      - name: Collect and verify APK
-        shell: bash
-        run: |
-          set -euo pipefail
-          mapfile -t found < <(find androidApp/build/outputs/apk -type f -name '*.apk' | sort)
-          if [ "${#found[@]}" -ne 1 ]; then
-            printf 'Diharapkan tepat 1 APK, ditemukan %s:\n' "${#found[@]}" >&2
-            printf '  %s\n' "${found[@]}" >&2
-            exit 1
-          fi
-
-          mkdir -p build-apks
-          apk="build-apks/SUKIZY-debug-run${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}.apk"
-          cp "${found[0]}" "$apk"
-          echo "APK_PATH=$apk" >> "$GITHUB_ENV"
-
-          # APK adalah file zip; entri korup akan merusak instalasi.
-          unzip -tq "$apk"
-
-          # Fingerprint sertifikat sama antar build = APK bisa saling update.
-          APKSIGNER="$(ls "$ANDROID_HOME"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -n 1 || true)"
-          cert="(apksigner tidak ditemukan)"
-          if [ -n "$APKSIGNER" ]; then
-            "$APKSIGNER" verify --print-certs "$apk" > apksigner.txt
-            cert="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' apksigner.txt)"
-          fi
-
-          {
-            echo "### SUKIZY BUILD APK"
-            echo ""
-            echo "| | |"
-            echo "|---|---|"
-            echo "| File | \`$(basename "$apk")\` |"
-            echo "| Ukuran | $(du -h "$apk" | cut -f1) |"
-            echo "| APK SHA-256 | \`$(sha256sum "$apk" | cut -d' ' -f1)\` |"
-            echo "| Signing cert SHA-256 | \`$cert\` |"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      # Upload APK mentah tanpa zip artifact (zip memicu "Bad file CRC value" di file manager Android).
-      - name: Upload APK
-        uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@v4
         with:
-          name: SUKIZY-debug-apk
-          path: ${{ env.APK_PATH }}
-          archive: false
-          retention-days: 30
+          name: Auralis-release-apk
+          path: android/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
 
-      # Diagnostik tidak berisi secret: hanya laporan build dan versi tool.
-      - name: Print diagnostics
+      - uses: actions/upload-artifact@v4
         if: failure()
-        shell: bash
-        run: |
-          echo "--- java"; java -version 2>&1 || true
-          echo "--- sdk root: ${ANDROID_HOME:-unset}"
-          ls "${ANDROID_HOME:-/nonexistent}/ndk" "${ANDROID_HOME:-/nonexistent}/cmake" 2>&1 || true
-          echo "--- submodule dirs"
-          ls -A metroproto | head -n 5 || true
-          ls -A opusDecoder/src/main/jni/libopus | head -n 5 || true
-          echo "--- disk"; df -h . || true
-
-      - name: Upload build diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v4
         with:
-          name: build-diagnostics
+          name: build-reports
           path: |
             **/build/reports/**
             **/hs_err_pid*.log
-          retention-days: 7
           if-no-files-found: ignore
