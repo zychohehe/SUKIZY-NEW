@@ -37,7 +37,7 @@ import com.auralis.music.data.network.LyricsClient
 import com.auralis.music.data.network.SearchSuggestionsClient
 import com.auralis.music.data.network.SpotifyPlaylistImporter
 import com.auralis.music.data.network.CompleteYouTubePlaylistImporter as YouTubePlaylistImporter
-import com.discord.socialsdk.DiscordSocialSdkInit
+import com.auralis.music.data.network.discord.DiscordSdkBridge
 import com.auralis.music.data.repository.*
 import com.auralis.music.data.service.AuralisAudioPlayer
 import com.auralis.music.domain.auth.GoogleAccountSyncManager
@@ -113,7 +113,7 @@ class MainActivity : ComponentActivity() {
         launchOverlayRemoved = recreatingInProcess
         if (!recreatingInProcess) showFastLaunch(waitForSystemSplash = savedInstanceState == null)
         else launchTouchGate.splashRemoved()
-        DiscordSocialSdkInit.setEngineActivity(this)
+        DiscordSdkBridge.setEngineActivity(this)
         liveNavDestination.value = extractNavDestination(intent)
         requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         enableEdgeToEdge()

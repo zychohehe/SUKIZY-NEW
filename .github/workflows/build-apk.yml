@@ -62,9 +62,11 @@ jobs:
             cp -r /tmp/discord-sdk/jniLibs/. "$APP/src/main/jniLibs/"
             cp -r /tmp/discord-sdk/discord/. "$APP/src/main/cpp/discord/"
           fi
-          for f in "$APP/libs/discord_partner_sdk.jar" "$APP/libs/libwebrtc.jar"; do
-            [ -f "$f" ] || { echo "::error::$f tidak ada. Tambahkan Discord Social SDK (lihat komentar di workflow)."; exit 1; }
-          done
+          if [ -f "$APP/libs/discord_partner_sdk.jar" ] && [ -f "$APP/libs/libwebrtc.jar" ]; then
+            echo "Discord Social SDK ditemukan: Rich Presence aktif."
+          else
+            echo "::warning::Discord Social SDK tidak ada. Build lanjut tanpa Discord Rich Presence (stub)."
+          fi
 
       # Release butuh google-services.json. Isi secret GOOGLE_SERVICES_JSON dengan isi file aslinya.
       # Kalau kosong, dipakai file contoh supaya build tetap jalan (login/sync Firebase tidak akan berfungsi).

@@ -30,6 +30,10 @@ fun getEnv(key: String, default: String = ""): String {
     return System.getenv(key) ?: envProperties.getProperty(key)?.trim() ?: default
 }
 
+val hasDiscordSdk = file("libs/discord_partner_sdk.jar").exists() &&
+    file("libs/libwebrtc.jar").exists() &&
+    file("src/main/cpp/discord").isDirectory
+
 android {
     namespace = "com.auralis.music"
     compileSdk = 35
@@ -123,10 +127,18 @@ android {
         buildConfig = true
     }
 
-    externalNativeBuild {
-        cmake {
-            path = file("src/main/cpp/CMakeLists.txt")
-            version = "3.22.1"
+    // The Discord Social SDK is proprietary and not in the repo. Without it the app still
+    // builds, with a no-op Discord client (src/discordStub) and no native bridge.
+    sourceSets.getByName("main").java.srcDir(
+        if (hasDiscordSdk) "src/discordSdk/java" else "src/discordStub/java"
+    )
+
+    if (hasDiscordSdk) {
+        externalNativeBuild {
+            cmake {
+                path = file("src/main/cpp/CMakeLists.txt")
+                version = "3.22.1"
+            }
         }
     }
 
@@ -183,7 +195,9 @@ dependencies {
 
     // Discord's official Android Social SDK. Its Prefab package supplies the native
     // rich-presence client used by DiscordSocialClient.
-    implementation(files("libs/discord_partner_sdk.jar", "libs/libwebrtc.jar"))
+    if (hasDiscordSdk) {
+        implementation(files("libs/discord_partner_sdk.jar", "libs/libwebrtc.jar"))
+    }
 
     // Room Database
     implementation(libs.androidx.room.runtime)
