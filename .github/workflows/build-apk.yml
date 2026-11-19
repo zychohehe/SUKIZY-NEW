@@ -27,7 +27,20 @@ jobs:
           distribution: temurin
           java-version: "21"
 
-      - uses: gradle/actions/setup-gradle@v4
+      # Sengaja TIDAK pakai gradle/actions/setup-gradle: action itu menyuntik init script Groovy
+      # ke ~/.gradle/init.d yang gagal dikompilasi Gradle 8.11 ("Unsupported class file major
+      # version 69"), jadi build mati sebelum project dibaca. Cache diatur manual di bawah.
+      - name: Bersihkan init script Gradle sisa
+        run: rm -rf "$HOME/.gradle/init.d" "$HOME/.gradle/init.gradle"
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches/modules-2
+            ~/.gradle/caches/build-cache-1
+            ~/.gradle/wrapper/dists
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', 'gradle/libs.versions.toml', 'gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-${{ runner.os }}-
 
       # gradle.properties berisi path Windows (C:/Program Files/...) yang bikin build Linux gagal.
       - name: Hapus org.gradle.java.home milik Windows
