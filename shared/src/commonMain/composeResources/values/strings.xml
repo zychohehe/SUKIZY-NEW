@@ -1370,6 +1370,8 @@
     <!-- Translators: Imperative action label for playlist in the playlist import. -->
     <string name="import_playlist">Import playlist</string>
     <string name="import_from_spotify">Import from Spotify</string>
+    <string name="library_import_spotify_title">Import from Spotify</string>
+    <string name="library_import_spotify_subtitle">Connect your account or paste a Spotify link</string>
     <!-- Translators: Label for playlist URL; retained for translation compatibility but not currently referenced by app code. -->
     <string name="playlist_url">Playlist URL or ID</string>
     <!-- Translators: Label for playlist name in the multiple app screens. -->
