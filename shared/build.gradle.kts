@@ -314,6 +314,8 @@ kotlin {
             languageSettings.optIn("kotlin.ExperimentalStdlibApi")
         }
         getByName("commonMain") {
+            // Sisa package lama (com.auralis) tidak punya dependency di project ini; jangan ikut dikompilasi.
+            kotlin.exclude("**/com/auralis/**")
             dependencies {
                 implementation("com.github.nyxiereal.glyphmind:glyphmind:0.1.0")
                 api("com.github.MetrolistGroup.innertubex:innertubex:$innerTubeXVersion")
